@@ -1,0 +1,31 @@
+# Environment & Secrets
+.env
+.env.local
+.env.production
+
+# Data files (downloaded at runtime)
+data/raw/
+data/processed/
+data/embeddings/
+data/*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
