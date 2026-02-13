@@ -1,9 +1,3 @@
----
-noteId: "883f1e5006f811f19003a775bfa91e67"
-tags: []
-
----
-
 # Quick Start Guide
 
 ## Phase 1 Complete! Now What?
