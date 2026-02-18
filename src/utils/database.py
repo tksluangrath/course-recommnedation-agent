@@ -59,6 +59,8 @@ class Course(Base):
     # Extracted features
     category = Column(String, index=True)
     estimated_hours = Column(Float)
+    num_reviews = Column(Integer)
+    learning_product = Column(String)  # Course, Specialization, Guided Project, etc.
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)

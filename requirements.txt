@@ -9,6 +9,7 @@ langchain-community>=0.0.10
 
 # LLM Providers
 langchain-anthropic>=0.1.1  # For Claude AI
+langchain-ollama>=0.1.0     # For Ollama ChatModel
 anthropic>=0.18.1           # Anthropic SDK
 
 # LLM & Embeddings

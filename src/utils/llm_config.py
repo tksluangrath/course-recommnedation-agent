@@ -77,31 +77,70 @@ class LLMConfig:
     def _get_ollama(temperature: Optional[float] = None):
         """Get Ollama instance."""
         from langchain_community.llms import Ollama
-        
+
         try:
             llm = Ollama(
                 model=LLMConfig.OLLAMA_MODEL,
                 temperature=temperature or LLMConfig.OLLAMA_TEMPERATURE
             )
-            
+
             print(f"Using Ollama: {LLMConfig.OLLAMA_MODEL}")
             return llm
         except Exception as e:
-            error_msg = (
-                f"\nFailed to connect to Ollama: {e}\n\n"
-                "Troubleshooting steps:\n"
-                "1. Make sure Ollama is installed:\n"
-                "   - Windows: Download from https://ollama.com/download\n"
-                "   - Mac/Linux: curl -fsSL https://ollama.com/install.sh | sh\n"
-                "2. Check if Ollama is running:\n"
-                "   - Windows: Look for Ollama icon in system tray\n"
-                "   - Or run: ollama serve\n"
-                "3. Download the model: ollama pull llama3.1\n"
-                "4. Test it works: ollama run llama3.1\n"
-                "5. If still failing, restart PowerShell/Terminal\n\n"
-                "See docs/OLLAMA_SETUP.md for detailed instructions."
+            raise RuntimeError(LLMConfig._ollama_error(e))
+
+    @staticmethod
+    def get_chat_llm(provider: Optional[str] = None, temperature: Optional[float] = None):
+        """Get a ChatModel instance (required for LangChain agents/tool calling).
+
+        Args:
+            provider: "claude" or "ollama" (default: from .env)
+            temperature: Sampling temperature
+
+        Returns:
+            ChatModel instance
+        """
+        provider = provider or LLMConfig.LLM_PROVIDER
+
+        if provider.lower() == "claude":
+            return LLMConfig._get_claude(temperature)
+        elif provider.lower() == "ollama":
+            return LLMConfig._get_chat_ollama(temperature)
+        else:
+            raise ValueError(f"Unknown LLM provider: {provider}. Use 'claude' or 'ollama'")
+
+    @staticmethod
+    def _get_chat_ollama(temperature: Optional[float] = None):
+        """Get ChatOllama instance (ChatModel, supports tool calling)."""
+        from langchain_ollama import ChatOllama
+
+        try:
+            llm = ChatOllama(
+                model=LLMConfig.OLLAMA_MODEL,
+                temperature=temperature or LLMConfig.OLLAMA_TEMPERATURE
             )
-            raise RuntimeError(error_msg)
+
+            print(f"Using ChatOllama: {LLMConfig.OLLAMA_MODEL}")
+            return llm
+        except Exception as e:
+            raise RuntimeError(LLMConfig._ollama_error(e))
+
+    @staticmethod
+    def _ollama_error(e):
+        return (
+            f"\nFailed to connect to Ollama: {e}\n\n"
+            "Troubleshooting steps:\n"
+            "1. Make sure Ollama is installed:\n"
+            "   - Windows: Download from https://ollama.com/download\n"
+            "   - Mac/Linux: curl -fsSL https://ollama.com/install.sh | sh\n"
+            "2. Check if Ollama is running:\n"
+            "   - Windows: Look for Ollama icon in system tray\n"
+            "   - Or run: ollama serve\n"
+            "3. Download the model: ollama pull llama3.1\n"
+            "4. Test it works: ollama run llama3.1\n"
+            "5. If still failing, restart PowerShell/Terminal\n\n"
+            "See docs/OLLAMA_SETUP.md for detailed instructions."
+        )
 
 
 def test_llm():

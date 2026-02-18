@@ -5,11 +5,10 @@ Cleans and preprocesses course data from Coursera/Udemy/other sources.
 Standardizes difficulty levels, extracts skills, and prepares data for database.
 """
 
-import os
 import re
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Optional
+from typing import List, Optional
 from pathlib import Path
 
 
@@ -27,178 +26,84 @@ class DataCleaner:
         'advanced level': 'Advanced',
     }
 
-    # Common skills to extract from descriptions
-    SKILL_KEYWORDS = [
-        'python', 'java', 'javascript', 'r', 'sql', 'machine learning',
-        'deep learning', 'data science', 'statistics', 'probability',
-        'algorithms', 'data structures', 'web development', 'frontend',
-        'backend', 'database', 'cloud', 'aws', 'azure', 'docker',
-        'kubernetes', 'git', 'agile', 'scrum', 'leadership', 'management',
-        'marketing', 'finance', 'accounting', 'business analytics',
-        'excel', 'powerbi', 'tableau', 'tensorflow', 'pytorch', 'nlp',
-        'computer vision', 'reinforcement learning', 'cybersecurity',
-        'networking', 'linux', 'devops', 'ci/cd', 'react', 'angular',
-        'vue', 'node', 'django', 'flask', 'spring', 'api', 'rest',
-        'graphql', 'mongodb', 'postgresql', 'mysql', 'redis', 'spark',
-        'hadoop', 'data engineering', 'etl', 'data visualization',
-        'project management', 'communication', 'problem solving'
-    ]
+    # Duration string to approximate hours mapping
+    DURATION_MAPPING = {
+        'less than 2 hours': 1.0,
+        '1 - 4 weeks': 20.0,
+        '1 - 3 months': 60.0,
+        '3 - 6 months': 120.0,
+        '6 - 12 months': 240.0,
+    }
 
     def __init__(self, raw_data_path: str = "data/raw", processed_data_path: str = "data/processed"):
-        """Initialize data cleaner.
-
-        Args:
-            raw_data_path: Path to raw data files
-            processed_data_path: Path to save processed data
-        """
         self.raw_data_path = Path(raw_data_path)
         self.processed_data_path = Path(processed_data_path)
-
-        # Create directories if they don't exist
         self.raw_data_path.mkdir(parents=True, exist_ok=True)
         self.processed_data_path.mkdir(parents=True, exist_ok=True)
 
     def clean_text(self, text: str) -> str:
-        """Clean text data.
-
-        Args:
-            text: Raw text
-
-        Returns:
-            Cleaned text
-        """
+        """Clean text data."""
         if pd.isna(text) or text is None:
             return ""
-
-        # Convert to string
         text = str(text)
-
-        # Remove HTML tags
         text = re.sub(r'<[^>]+>', '', text)
-
-        # Remove extra whitespace
         text = re.sub(r'\s+', ' ', text).strip()
-
-        # Remove special characters but keep basic punctuation
-        text = re.sub(r'[^\w\s.,!?-]', '', text)
-
         return text
 
     def standardize_difficulty(self, difficulty: str) -> str:
-        """Standardize difficulty level.
-
-        Args:
-            difficulty: Raw difficulty string
-
-        Returns:
-            Standardized difficulty level
-        """
+        """Standardize difficulty level."""
         if pd.isna(difficulty) or difficulty is None:
             return "Mixed"
-
         difficulty = str(difficulty).lower().strip()
-
-        # Check mapping
         for key, value in self.DIFFICULTY_MAPPING.items():
             if key in difficulty:
                 return value
-
-        # Default to Mixed
         return "Mixed"
 
-    def extract_skills(self, text: str) -> List[str]:
-        """Extract skills from course description.
+    def parse_duration(self, duration: str) -> Optional[float]:
+        """Parse duration string to estimated hours.
 
-        Args:
-            text: Course description
-
-        Returns:
-            List of extracted skills
+        Handles formats like: "Less Than 2 Hours", "1 - 4 Weeks", "1 - 3 Months"
         """
-        if pd.isna(text) or text is None:
-            return []
-
-        text = str(text).lower()
-        found_skills = []
-
-        for skill in self.SKILL_KEYWORDS:
-            # Use word boundaries to avoid partial matches
-            pattern = r'\b' + re.escape(skill) + r'\b'
-            if re.search(pattern, text):
-                found_skills.append(skill)
-
-        return found_skills
-
-    def extract_hours(self, text: str) -> Optional[float]:
-        """Extract estimated hours from text.
-
-        Args:
-            text: Text containing hour information
-
-        Returns:
-            Estimated hours or None
-        """
-        if pd.isna(text) or text is None:
+        if pd.isna(duration) or duration is None:
             return None
-
-        text = str(text).lower()
-
-        # Look for patterns like "10 hours", "20-30 hours", "approximately 15 hours"
-        patterns = [
-            r'(\d+(?:\.\d+)?)\s*(?:-\s*\d+(?:\.\d+)?)?\s*hours?',
-            r'(\d+(?:\.\d+)?)\s*(?:-\s*\d+(?:\.\d+)?)?\s*hrs?',
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, text)
-            if match:
-                try:
-                    return float(match.group(1))
-                except ValueError:
-                    continue
-
+        duration_lower = str(duration).lower().strip()
+        for key, hours in self.DURATION_MAPPING.items():
+            if key in duration_lower:
+                return hours
+        # Try extracting numeric hours directly
+        match = re.search(r'(\d+(?:\.\d+)?)\s*hours?', duration_lower)
+        if match:
+            return float(match.group(1))
         return None
 
-    def infer_category(self, course_name: str, description: str) -> str:
-        """Infer course category from name and description.
+    def parse_reviews(self, reviews) -> Optional[int]:
+        """Parse review count strings like '6100', '11K', '30K'."""
+        if pd.isna(reviews) or reviews is None:
+            return None
+        text = str(reviews).strip().lower().replace(',', '')
+        if 'k' in text:
+            try:
+                return int(float(text.replace('k', '')) * 1000)
+            except ValueError:
+                return None
+        try:
+            return int(float(text))
+        except ValueError:
+            return None
 
-        Args:
-            course_name: Course name
-            description: Course description
-
-        Returns:
-            Inferred category
-        """
-        combined_text = f"{course_name} {description}".lower()
-
-        categories = {
-            'Data Science': ['data science', 'data analytics', 'big data'],
-            'Machine Learning': ['machine learning', 'ml', 'deep learning', 'ai', 'artificial intelligence'],
-            'Programming': ['programming', 'coding', 'software development', 'python', 'java', 'javascript'],
-            'Web Development': ['web development', 'frontend', 'backend', 'fullstack', 'web design'],
-            'Business': ['business', 'management', 'leadership', 'marketing', 'finance', 'mba'],
-            'Cloud Computing': ['cloud', 'aws', 'azure', 'gcp', 'devops'],
-            'Cybersecurity': ['cybersecurity', 'security', 'ethical hacking', 'penetration testing'],
-            'Data Engineering': ['data engineering', 'etl', 'data pipeline', 'data warehouse'],
-            'Design': ['design', 'ui/ux', 'graphic design', 'user experience'],
-            'Other': []
-        }
-
-        for category, keywords in categories.items():
-            for keyword in keywords:
-                if keyword in combined_text:
-                    return category
-
-        return 'Other'
+    def parse_gained_skills(self, skills_str: str) -> List[str]:
+        """Parse comma-separated skills string into a list."""
+        if pd.isna(skills_str) or skills_str is None:
+            return []
+        return [s.strip() for s in str(skills_str).split(',') if s.strip()]
 
     def clean_coursera_data(self, file_path: str) -> pd.DataFrame:
         """Clean Coursera course data.
 
-        Args:
-            file_path: Path to raw Coursera CSV file
-
-        Returns:
-            Cleaned DataFrame
+        Handles both the 2025 dataset format (Title, Institution, Level, Rate,
+        Subject, Gained Skills, Duration, Reviews, Learning Product) and older
+        formats (Course Name, University, Difficulty Level, Course Rating, etc.).
         """
         print(f"Loading data from: {file_path}")
         df = pd.read_csv(file_path)
@@ -206,17 +111,21 @@ class DataCleaner:
         print(f"Raw data shape: {df.shape}")
         print(f"Columns: {df.columns.tolist()}")
 
-        # Create clean dataframe
         clean_df = pd.DataFrame()
 
-        # Map columns (adjust based on your dataset structure)
+        # Column mapping: internal name -> list of possible source column names
         column_mapping = {
-            'course_name': ['Course Name', 'name', 'title', 'course_title'],
-            'university': ['University', 'organization', 'provider'],
-            'difficulty_level': ['Difficulty Level', 'difficulty', 'level'],
-            'course_rating': ['Course Rating', 'rating', 'stars'],
+            'course_name': ['Title', 'Course Name', 'name', 'title', 'course_title'],
+            'university': ['Institution', 'University', 'organization', 'provider'],
+            'difficulty_level': ['Level', 'Difficulty Level', 'difficulty', 'level'],
+            'course_rating': ['Rate', 'Course Rating', 'rating', 'stars'],
             'course_url': ['Course URL', 'url', 'link'],
             'course_description': ['Course Description', 'description', 'summary'],
+            'category': ['Subject'],
+            'gained_skills': ['Gained Skills'],
+            'duration': ['Duration'],
+            'num_reviews': ['Reviews'],
+            'learning_product': ['Learning Product'],
         }
 
         # Find and map columns
@@ -226,7 +135,7 @@ class DataCleaner:
                     clean_df[target_col] = df[col_name]
                     break
 
-        # If no mapping found, try case-insensitive matching
+        # Fallback: case-insensitive matching for course_name
         if 'course_name' not in clean_df.columns:
             for col in df.columns:
                 if 'name' in col.lower() or 'title' in col.lower():
@@ -234,14 +143,12 @@ class DataCleaner:
                     break
 
         # Ensure required columns exist
-        required_cols = ['course_name']
-        for col in required_cols:
-            if col not in clean_df.columns:
-                raise ValueError(f"Required column '{col}' not found in dataset")
+        if 'course_name' not in clean_df.columns:
+            raise ValueError("Required column 'course_name' not found in dataset")
 
         # Clean text fields
         print("\nCleaning text fields...")
-        for col in ['course_name', 'university', 'course_description']:
+        for col in ['course_name', 'university', 'course_description', 'category']:
             if col in clean_df.columns:
                 clean_df[col] = clean_df[col].apply(self.clean_text)
 
@@ -261,29 +168,51 @@ class DataCleaner:
                 clean_df['course_rating'], errors='coerce'
             )
 
-        # Extract skills
-        print("Extracting skills...")
-        if 'course_description' in clean_df.columns:
-            clean_df['extracted_skills'] = clean_df['course_description'].apply(
-                self.extract_skills
+        # Parse review counts
+        if 'num_reviews' in clean_df.columns:
+            print("Parsing review counts...")
+            clean_df['num_reviews'] = clean_df['num_reviews'].apply(self.parse_reviews)
+
+        # Parse duration to estimated hours
+        if 'duration' in clean_df.columns:
+            print("Parsing durations...")
+            clean_df['estimated_hours'] = clean_df['duration'].apply(self.parse_duration)
+            clean_df.drop(columns=['duration'], inplace=True)
+
+        # Handle skills: prefer pre-extracted "Gained Skills" over keyword extraction
+        print("Processing skills...")
+        if 'gained_skills' in clean_df.columns:
+            clean_df['extracted_skills'] = clean_df['gained_skills'].apply(
+                self.parse_gained_skills
             )
             clean_df['skills_count'] = clean_df['extracted_skills'].apply(len)
+            clean_df.drop(columns=['gained_skills'], inplace=True)
 
-        # Infer category
-        print("Inferring categories...")
-        if 'course_description' in clean_df.columns and 'course_name' in clean_df.columns:
+        # Build a synthetic description for embeddings if none exists
+        # Combines title + category + skills for rich semantic search
+        if 'course_description' not in clean_df.columns or clean_df['course_description'].isna().all():
+            print("No description column found, building from title + category + skills...")
+            def build_description(row):
+                parts = [str(row.get('course_name', ''))]
+                if pd.notna(row.get('category')):
+                    parts.append(str(row['category']))
+                if 'extracted_skills' in row.index and row.get('extracted_skills'):
+                    skills = row['extracted_skills']
+                    if isinstance(skills, list):
+                        parts.append("Skills: " + ", ".join(skills))
+                return ". ".join(parts)
+
+            clean_df['course_description'] = clean_df.apply(build_description, axis=1)
+
+        # Use Subject as category if available, otherwise infer
+        if 'category' not in clean_df.columns or clean_df['category'].isna().all():
+            print("Inferring categories...")
             clean_df['category'] = clean_df.apply(
-                lambda row: self.infer_category(
-                    row['course_name'],
+                lambda row: self._infer_category(
+                    row.get('course_name', ''),
                     row.get('course_description', '')
                 ),
                 axis=1
-            )
-
-        # Extract estimated hours (if available)
-        if 'course_description' in clean_df.columns:
-            clean_df['estimated_hours'] = clean_df['course_description'].apply(
-                self.extract_hours
             )
 
         # Remove duplicates
@@ -297,21 +226,35 @@ class DataCleaner:
         clean_df = clean_df[clean_df['course_name'].str.strip() != '']
 
         print(f"\nCleaned data shape: {clean_df.shape}")
-
         return clean_df
 
-    def save_cleaned_data(self, df: pd.DataFrame, filename: str = "cleaned_courses.csv"):
-        """Save cleaned data to CSV.
+    def _infer_category(self, course_name: str, description: str) -> str:
+        """Infer course category from name and description."""
+        combined_text = f"{course_name} {description}".lower()
+        categories = {
+            'Data Science': ['data science', 'data analytics', 'big data'],
+            'Machine Learning': ['machine learning', 'ml', 'deep learning', 'ai', 'artificial intelligence'],
+            'Programming': ['programming', 'coding', 'software development', 'python', 'java', 'javascript'],
+            'Web Development': ['web development', 'frontend', 'backend', 'fullstack', 'web design'],
+            'Business': ['business', 'management', 'leadership', 'marketing', 'finance', 'mba'],
+            'Cloud Computing': ['cloud', 'aws', 'azure', 'gcp', 'devops'],
+            'Cybersecurity': ['cybersecurity', 'security', 'ethical hacking', 'penetration testing'],
+            'Data Engineering': ['data engineering', 'etl', 'data pipeline', 'data warehouse'],
+            'Design': ['design', 'ui/ux', 'graphic design', 'user experience'],
+        }
+        for category, keywords in categories.items():
+            for keyword in keywords:
+                if keyword in combined_text:
+                    return category
+        return 'Other'
 
-        Args:
-            df: Cleaned DataFrame
-            filename: Output filename
-        """
+    def save_cleaned_data(self, df: pd.DataFrame, filename: str = "cleaned_courses.csv"):
+        """Save cleaned data to CSV."""
         output_path = self.processed_data_path / filename
         df.to_csv(output_path, index=False)
         print(f"\nCleaned data saved to: {output_path}")
 
-        # Also save a summary
+        # Save summary
         summary_path = self.processed_data_path / "data_summary.txt"
         with open(summary_path, 'w') as f:
             f.write("DATA CLEANING SUMMARY\n")
@@ -330,54 +273,20 @@ class DataCleaner:
                 f.write("\n\n")
 
             if 'course_rating' in df.columns:
-                f.write(f"Average rating: {df['course_rating'].mean():.2f}\n")
-                f.write(f"Rating range: {df['course_rating'].min():.1f} - {df['course_rating'].max():.1f}\n\n")
+                valid_ratings = df['course_rating'].dropna()
+                if len(valid_ratings) > 0:
+                    f.write(f"Average rating: {valid_ratings.mean():.2f}\n")
+                    f.write(f"Rating range: {valid_ratings.min():.1f} - {valid_ratings.max():.1f}\n\n")
+
+            if 'skills_count' in df.columns:
+                f.write(f"Average skills per course: {df['skills_count'].mean():.1f}\n")
+                f.write(f"Total unique skills: {len(set(s for skills in df['extracted_skills'] if isinstance(skills, list) for s in skills))}\n\n")
 
         print(f"Summary saved to: {summary_path}")
 
 
-def test_cleaner():
-    """Test data cleaner with sample data."""
-    print("="*60)
-    print("TESTING DATA CLEANER")
-    print("="*60)
-
-    # Create sample data
-    sample_data = {
-        'Course Name': ['Introduction to Python Programming', 'Machine Learning A-Z', 'Web Development Bootcamp'],
-        'University': ['MIT', 'Stanford', 'Udemy'],
-        'Difficulty Level': ['beginner level', 'intermediate', 'MIXED'],
-        'Course Rating': ['4.5', '4.8', '4.2'],
-        'Course Description': [
-            'Learn Python programming from scratch. Covers basics of Python, data structures, and algorithms.',
-            'Complete ML course covering supervised learning, unsupervised learning, and deep learning with TensorFlow.',
-            'Fullstack web development with HTML, CSS, JavaScript, React, Node.js and MongoDB.'
-        ]
-    }
-
-    # Create temporary CSV
-    temp_csv = Path('data/raw/temp_sample.csv')
-    temp_csv.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(sample_data).to_csv(temp_csv, index=False)
-
-    # Clean data
-    cleaner = DataCleaner()
-    clean_df = cleaner.clean_coursera_data(str(temp_csv))
-
-    # Display results
-    print("\nCleaned Data:")
-    print(clean_df[['course_name', 'difficulty_level', 'category', 'skills_count']].to_string())
-
-    print("\nExtracted skills for first course:")
-    print(clean_df['extracted_skills'].iloc[0])
-
-    # Clean up
-    temp_csv.unlink()
-
-    print("\n" + "="*60)
-    print("Data cleaner test completed!")
-    print("="*60)
-
-
 if __name__ == "__main__":
-    test_cleaner()
+    # Clean the real Coursera 2025 dataset
+    cleaner = DataCleaner()
+    df = cleaner.clean_coursera_data('data/raw/coursera.csv')
+    cleaner.save_cleaned_data(df)
