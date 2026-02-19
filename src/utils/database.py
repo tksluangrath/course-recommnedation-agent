@@ -333,6 +333,120 @@ class DatabaseManager:
         finally:
             session.close()
 
+    def get_course_by_name(self, course_name: str) -> Optional[Course]:
+        """Get a course by exact or partial name match."""
+        session = self.Session()
+        try:
+            course = session.query(Course).filter(
+                Course.course_name == course_name
+            ).first()
+            if not course:
+                course = session.query(Course).filter(
+                    Course.course_name.contains(course_name)
+                ).first()
+            return course
+        finally:
+            session.close()
+
+    def add_prerequisite(self, course_id: int, prereq_id: int):
+        """Add a prerequisite relationship between two courses."""
+        session = self.Session()
+        try:
+            course = session.query(Course).filter(Course.id == course_id).first()
+            prereq = session.query(Course).filter(Course.id == prereq_id).first()
+            if not course or not prereq:
+                return
+            if prereq not in course.prerequisites:
+                course.prerequisites.append(prereq)
+                session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
+    def get_prerequisites(self, course_id: int) -> List[Course]:
+        """Get all prerequisite courses for a given course."""
+        session = self.Session()
+        try:
+            course = session.query(Course).filter(Course.id == course_id).first()
+            if not course:
+                return []
+            prereqs = list(course.prerequisites)
+            return prereqs
+        finally:
+            session.close()
+
+    def populate_prerequisites_heuristic(self, min_shared_skills: int = 2) -> int:
+        """Heuristically seed the course_prerequisites table.
+
+        For each pair (A, B) in the same category where A.difficulty < B.difficulty
+        and they share >= min_shared_skills skills, A is a prerequisite for B.
+
+        Difficulty order: Beginner=0, Mixed=1, Intermediate=1, Advanced=2
+        Caps prerequisites per course at 3 to keep the graph sparse.
+
+        Returns:
+            Number of prerequisite relationships inserted.
+        """
+        DIFF_ORDER = {'Beginner': 0, 'Mixed': 1, 'Intermediate': 1, 'Advanced': 2}
+
+        session = self.Session()
+        try:
+            # Load all courses with their skill names grouped by category
+            courses = session.query(Course).all()
+
+            # Build in-memory index: {category: [course_info]}
+            from collections import defaultdict
+            cat_courses = defaultdict(list)
+            for c in courses:
+                skill_names = {s.name for s in c.skills}
+                cat_courses[c.category].append({
+                    'id': c.id,
+                    'diff': DIFF_ORDER.get(c.difficulty_level, 1),
+                    'skills': skill_names,
+                    'prereq_count': 0,
+                })
+
+            inserted = 0
+            prereq_counts = defaultdict(int)  # course_id -> how many prereqs it has
+
+            for category, course_list in cat_courses.items():
+                if len(course_list) < 2:
+                    continue
+                # Sort by difficulty ascending
+                course_list.sort(key=lambda x: x['diff'])
+
+                for i, harder in enumerate(course_list):
+                    for easier in course_list[:i]:
+                        # Only connect across different difficulty tiers
+                        if easier['diff'] >= harder['diff']:
+                            continue
+                        # Check shared skills
+                        shared = easier['skills'] & harder['skills']
+                        if len(shared) < min_shared_skills:
+                            continue
+                        # Cap prerequisites per course at 3
+                        if prereq_counts[harder['id']] >= 3:
+                            continue
+
+                        # Check if already exists
+                        harder_course = session.query(Course).filter(Course.id == harder['id']).first()
+                        easier_course = session.query(Course).filter(Course.id == easier['id']).first()
+                        if easier_course not in harder_course.prerequisites:
+                            harder_course.prerequisites.append(easier_course)
+                            prereq_counts[harder['id']] += 1
+                            inserted += 1
+
+            session.commit()
+            return inserted
+
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
     def get_stats(self) -> Dict:
         """Get database statistics.
 

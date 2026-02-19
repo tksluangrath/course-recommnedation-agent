@@ -17,6 +17,7 @@ from collections import Counter
 
 # Add parent paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from database import DatabaseManager
 from embeddings import EmbeddingManager
@@ -148,6 +149,17 @@ class ContentBasedRecommender:
 
         return result_df.head(n)
 
+    def _attach_hours(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Attach estimated_hours from the courses CSV to a results DataFrame."""
+        if self.courses_df.empty or 'estimated_hours' not in self.courses_df.columns:
+            df = df.copy()
+            df['estimated_hours'] = None
+            return df
+        hours_map = self.courses_df.set_index('course_name')['estimated_hours'].to_dict()
+        df = df.copy()
+        df['estimated_hours'] = df['course_name'].map(hours_map)
+        return df
+
     def recommend_learning_path(self, goal: str, current_skills: List[str] = None,
                                  n_per_level: int = 3) -> Dict[str, pd.DataFrame]:
         """Generate an ordered learning path from beginner to advanced.
@@ -160,6 +172,9 @@ class ContentBasedRecommender:
         Returns:
             Dict with keys 'Beginner', 'Intermediate', 'Advanced', each containing a DataFrame
         """
+        from path_graph import LearningPathGraph
+        sequencer = LearningPathGraph()
+
         current_skills = current_skills or []
         current_set = set(s.lower() for s in current_skills)
 
@@ -177,7 +192,6 @@ class ContentBasedRecommender:
             if current_set and not self.courses_df.empty:
                 novelty_scores = []
                 for _, row in results.iterrows():
-                    # Find matching course in full data
                     match = self.courses_df[
                         self.courses_df['course_name'] == row['course_name']
                     ]
@@ -195,9 +209,53 @@ class ContentBasedRecommender:
                     ['novelty', 'similarity_score'], ascending=[False, False]
                 )
 
-            path[level] = results.head(n_per_level)
+            level_df = results.head(n_per_level)
+            # Attach estimated_hours and sequence within level
+            level_df = self._attach_hours(level_df)
+            level_df = sequencer.sequence_within_level(level_df)
+            path[level] = level_df
 
         return path
+
+    def _prioritize_skills(self, skills: List[str]) -> List[Dict]:
+        """Sort skills foundational-first using difficulty distribution.
+
+        A skill is "foundational" if it appears more often in Beginner courses.
+        Returns list of {skill, level} dicts ordered from most foundational to most advanced.
+        """
+        if self.courses_df.empty or 'difficulty_level' not in self.courses_df.columns:
+            return [{'skill': s, 'level': 'unknown'} for s in skills]
+
+        skill_set = set(s.lower() for s in skills)
+        skill_diff_score = {}
+
+        DIFF_SCORE = {'Beginner': 0, 'Mixed': 1, 'Intermediate': 1, 'Advanced': 2}
+
+        for _, row in self.courses_df.iterrows():
+            course_skills = set(s.lower() for s in row.get('skills_list', []))
+            diff_val = DIFF_SCORE.get(row.get('difficulty_level', 'Mixed'), 1)
+            for sk in course_skills & skill_set:
+                if sk not in skill_diff_score:
+                    skill_diff_score[sk] = []
+                skill_diff_score[sk].append(diff_val)
+
+        result = []
+        for sk in skills:
+            sk_lower = sk.lower()
+            scores = skill_diff_score.get(sk_lower, [1])
+            avg = sum(scores) / len(scores)
+            if avg < 0.5:
+                level = 'foundational'
+            elif avg < 1.5:
+                level = 'intermediate'
+            else:
+                level = 'advanced'
+            result.append({'skill': sk, 'level': level, '_score': avg})
+
+        result.sort(key=lambda x: x['_score'])
+        for r in result:
+            del r['_score']
+        return result
 
     def get_skill_gap(self, goal_skills: List[str],
                        current_skills: List[str]) -> Dict:
@@ -208,13 +266,16 @@ class ContentBasedRecommender:
             current_skills: Skills the user already has
 
         Returns:
-            Dict with gap analysis
+            Dict with gap analysis including priority-ordered missing skills
         """
         goal_set = set(s.lower() for s in goal_skills)
         current_set = set(s.lower() for s in current_skills)
 
         missing = goal_set - current_set
         covered = goal_set & current_set
+
+        # Priority-order the missing skills (foundational first)
+        priority_order = self._prioritize_skills(list(missing))
 
         # Find courses that teach missing skills
         recommendations = self.recommend_by_skills(list(missing), n=10)
@@ -223,6 +284,7 @@ class ContentBasedRecommender:
             'goal_skills': list(goal_set),
             'current_skills': list(current_set),
             'missing_skills': list(missing),
+            'priority_order': priority_order,
             'covered_skills': list(covered),
             'completion_pct': len(covered) / len(goal_set) * 100 if goal_set else 100,
             'recommended_courses': recommendations

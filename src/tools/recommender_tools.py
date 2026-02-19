@@ -18,12 +18,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "recommender"))
 from database import DatabaseManager
 from content_based import ContentBasedRecommender
 from hybrid import HybridRecommender
+from path_graph import LearningPathGraph
 
 
 # Shared instances (initialized lazily)
 _db = None
 _content_rec = None
 _hybrid_rec = None
+_path_graph = None
 
 
 def _get_db():
@@ -47,6 +49,13 @@ def _get_hybrid_rec():
     return _hybrid_rec
 
 
+def _get_path_graph():
+    global _path_graph
+    if _path_graph is None:
+        _path_graph = LearningPathGraph(db=_get_db())
+    return _path_graph
+
+
 def _format_courses(df, max_courses=5):
     """Format a DataFrame of courses into readable text."""
     if df is None or df.empty:
@@ -60,6 +69,7 @@ def _format_courses(df, max_courses=5):
         rating = row.get('rating', row.get('course_rating', ''))
         university = row.get('university', '')
         score = row.get('similarity_score', row.get('hybrid_score', row.get('skill_similarity', '')))
+        hours = row.get('estimated_hours')
 
         line = f"{i}. {name}"
         details = []
@@ -71,6 +81,8 @@ def _format_courses(df, max_courses=5):
             details.append(f"Rating: {rating}")
         if university:
             details.append(f"By: {university}")
+        if hours and isinstance(hours, (int, float)) and not __import__('math').isnan(hours):
+            details.append(f"~{int(hours)} hrs")
         if score and isinstance(score, (int, float)):
             details.append(f"Match: {score:.2f}")
 
@@ -147,11 +159,22 @@ def recommend_by_skills(skills: str) -> str:
 def create_learning_path(goal: str, current_skills: str = "") -> str:
     """Create a structured learning path from beginner to advanced for a goal.
     Use this when the user wants a step-by-step learning plan.
+    Optionally accepts 'goal | hours_per_week' format (e.g. 'machine learning | 8').
 
     Args:
-        goal: The learning goal, e.g. 'become a data scientist', 'learn web development'
+        goal: The learning goal, e.g. 'become a data scientist' or 'machine learning | 10'
         current_skills: Optional comma-separated skills the user already has
     """
+    # Parse optional hours_per_week from goal using pipe separator
+    hours_per_week = 10.0
+    if "|" in goal:
+        parts = goal.split("|", 1)
+        goal = parts[0].strip()
+        try:
+            hours_per_week = float(parts[1].strip())
+        except ValueError:
+            pass
+
     skills = [s.strip() for s in current_skills.split(",") if s.strip()] if current_skills else None
 
     rec = _get_hybrid_rec()
@@ -165,13 +188,31 @@ def create_learning_path(goal: str, current_skills: str = "") -> str:
             for i, (_, row) in enumerate(courses.iterrows(), 1):
                 name = row.get('course_name', 'Unknown')
                 university = row.get('university', '')
+                hours = row.get('estimated_hours')
                 line = f"  {i}. {name}"
                 if university:
                     line += f" (by {university})"
+                if hours and isinstance(hours, (int, float)):
+                    import math
+                    if not math.isnan(hours):
+                        line += f" — ~{int(hours)} hrs"
                 lines.append(line)
         else:
             lines.append("  No courses found for this level.")
         lines.append("")
+
+    # Add timeline block
+    graph = _get_path_graph()
+    timeline = graph.estimate_timeline(path, hours_per_week=hours_per_week)
+    if timeline['total_hours'] > 0:
+        lines.append(f"--- Timeline ({int(hours_per_week)} hrs/week) ---")
+        lines.append(f"  Total: ~{timeline['total_hours']} hrs  (~{timeline['weeks']} weeks)")
+        for sched in timeline.get('schedule', []):
+            lvl_info = timeline['per_level'].get(sched['level'], {})
+            lines.append(
+                f"  Weeks {sched['weeks']}: {sched['level']} "
+                f"({lvl_info.get('count', '?')} courses, ~{lvl_info.get('hours', '?')} hrs)"
+            )
 
     return "\n".join(lines)
 
@@ -198,8 +239,20 @@ def analyze_skill_gap(goal_skills: str, current_skills: str) -> str:
         f"Skill Gap Analysis",
         f"  Completion: {gap['completion_pct']:.0f}%",
         f"  Skills you have: {', '.join(gap['covered_skills']) or 'None'}",
-        f"  Skills to learn: {', '.join(gap['missing_skills']) or 'All covered!'}",
     ]
+
+    # Show missing skills in priority order
+    priority = gap.get('priority_order', [])
+    if priority:
+        lines.append("\n  Skills to learn (recommended order — foundational first):")
+        for i, item in enumerate(priority, 1):
+            sk = item['skill'] if isinstance(item, dict) else item
+            lv = item.get('level', '') if isinstance(item, dict) else ''
+            annotation = f" — {lv}" if lv and lv != 'unknown' else ''
+            lines.append(f"    {i}. {sk}{annotation}")
+    else:
+        missing = gap.get('missing_skills', [])
+        lines.append(f"  Skills to learn: {', '.join(missing) or 'All covered!'}")
 
     recs = gap.get('recommended_courses')
     if recs is not None and not recs.empty:
@@ -268,6 +321,83 @@ def get_popular_skills(category: str = "") -> str:
     return "\n".join(lines)
 
 
+@tool
+def estimate_learning_timeline(goal_and_hours: str) -> str:
+    """Estimate how long a learning path will take given available study hours.
+    Use this when the user asks how long it will take to learn something, or when
+    they mention how many hours per week they can study.
+
+    Args:
+        goal_and_hours: Format 'goal | hours_per_week', e.g. 'machine learning | 8'
+                        If no hours provided, defaults to 10 hrs/week.
+    """
+    hours_per_week = 10.0
+    goal = goal_and_hours.strip()
+
+    if "|" in goal_and_hours:
+        parts = goal_and_hours.split("|", 1)
+        goal = parts[0].strip()
+        try:
+            hours_per_week = float(parts[1].strip())
+        except ValueError:
+            pass
+
+    rec = _get_hybrid_rec()
+    path = rec.recommend_learning_path(goal, n_per_level=3)
+
+    graph = _get_path_graph()
+    timeline = graph.estimate_timeline(path, hours_per_week=hours_per_week)
+
+    if timeline['total_hours'] == 0:
+        return f"No courses found for '{goal}'. Try a different search term."
+
+    lines = [
+        f"Timeline Estimate: {goal}",
+        f"  Studying {int(hours_per_week)} hours/week",
+        f"  Total: ~{timeline['total_hours']} hours (~{timeline['weeks']} weeks)",
+        "",
+        "Week-by-week schedule:",
+    ]
+    for sched in timeline.get('schedule', []):
+        lvl_info = timeline['per_level'].get(sched['level'], {})
+        lines.append(
+            f"  Weeks {sched['weeks']} — {sched['level']} "
+            f"({lvl_info.get('count', '?')} courses, ~{lvl_info.get('hours', '?')} hrs)"
+        )
+        for c in sched.get('courses', []):
+            lines.append(f"    • {c}")
+
+    return "\n".join(lines)
+
+
+@tool
+def get_prerequisite_path(course_name: str) -> str:
+    """Get the prerequisite chain for a specific course — what you need to learn first.
+    Use this when the user asks what to take before a specific course, or wants
+    to understand the full course dependency chain.
+
+    Args:
+        course_name: The name of the target course
+    """
+    graph = _get_path_graph()
+    chain = graph.get_prerequisite_chain(course_name)
+
+    if len(chain) <= 1:
+        return (
+            f"No prerequisites found for '{course_name}' in the database.\n"
+            f"This may mean it's a standalone course or prerequisites haven't been mapped yet."
+        )
+
+    lines = [f"Prerequisite path for: {course_name}", ""]
+    for i, course in enumerate(chain):
+        if i == len(chain) - 1:
+            lines.append(f"  {'  ' * i}→ {course} (your target)")
+        else:
+            lines.append(f"  {'  ' * i}{i + 1}. {course}")
+
+    return "\n".join(lines)
+
+
 def get_all_tools():
     """Return all available tools for the agent."""
     return [
@@ -278,4 +408,6 @@ def get_all_tools():
         analyze_skill_gap,
         get_course_info,
         get_popular_skills,
+        estimate_learning_timeline,
+        get_prerequisite_path,
     ]

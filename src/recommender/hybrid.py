@@ -150,6 +150,11 @@ class HybridRecommender:
 
                 for level in path:
                     if not path[level].empty:
+                        # Preserve estimated_hours before any merge/sort
+                        hours_backup = None
+                        if 'estimated_hours' in path[level].columns:
+                            hours_backup = path[level][['course_name', 'estimated_hours']].copy()
+
                         path[level]['collab_boost'] = path[level]['course_name'].map(
                             collab_scores
                         ).fillna(0)
@@ -162,6 +167,12 @@ class HybridRecommender:
                             )
                             path[level] = path[level].sort_values(
                                 'combined', ascending=False
+                            )
+
+                        # Restore estimated_hours if it was dropped
+                        if hours_backup is not None and 'estimated_hours' not in path[level].columns:
+                            path[level] = path[level].merge(
+                                hours_backup, on='course_name', how='left'
                             )
 
         # Trim to requested size
