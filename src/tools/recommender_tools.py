@@ -27,6 +27,15 @@ _content_rec = None
 _hybrid_rec = None
 _path_graph = None
 
+# Active user profile (set by CourseAdvisorAgent on startup)
+_active_profile: dict = {}
+
+
+def set_active_profile(profile: dict) -> None:
+    """Update the active user profile used by tools for defaults (e.g. hours_per_week)."""
+    global _active_profile
+    _active_profile = profile or {}
+
 
 def _get_db():
     global _db
@@ -165,8 +174,9 @@ def create_learning_path(goal: str, current_skills: str = "") -> str:
         goal: The learning goal, e.g. 'become a data scientist' or 'machine learning | 10'
         current_skills: Optional comma-separated skills the user already has
     """
-    # Parse optional hours_per_week from goal using pipe separator
-    hours_per_week = 10.0
+    # Parse optional hours_per_week from goal using pipe separator;
+    # fall back to user profile value if not specified
+    hours_per_week = _active_profile.get('hours_per_week', 10.0) or 10.0
     if "|" in goal:
         parts = goal.split("|", 1)
         goal = parts[0].strip()
@@ -331,7 +341,7 @@ def estimate_learning_timeline(goal_and_hours: str) -> str:
         goal_and_hours: Format 'goal | hours_per_week', e.g. 'machine learning | 8'
                         If no hours provided, defaults to 10 hrs/week.
     """
-    hours_per_week = 10.0
+    hours_per_week = _active_profile.get('hours_per_week', 10.0) or 10.0
     goal = goal_and_hours.strip()
 
     if "|" in goal_and_hours:

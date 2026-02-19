@@ -150,14 +150,14 @@ class ContentBasedRecommender:
         return result_df.head(n)
 
     def _attach_hours(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Attach estimated_hours from the courses CSV to a results DataFrame."""
-        if self.courses_df.empty or 'estimated_hours' not in self.courses_df.columns:
-            df = df.copy()
-            df['estimated_hours'] = None
-            return df
-        hours_map = self.courses_df.set_index('course_name')['estimated_hours'].to_dict()
+        """Attach estimated_hours and learning_product from the courses CSV."""
         df = df.copy()
-        df['estimated_hours'] = df['course_name'].map(hours_map)
+        for col in ['estimated_hours', 'learning_product']:
+            if not self.courses_df.empty and col in self.courses_df.columns:
+                col_map = self.courses_df.set_index('course_name')[col].to_dict()
+                df[col] = df['course_name'].map(col_map)
+            elif col not in df.columns:
+                df[col] = None
         return df
 
     def recommend_learning_path(self, goal: str, current_skills: List[str] = None,

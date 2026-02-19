@@ -16,6 +16,15 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 
 
+PRODUCT_HOUR_DEFAULTS = {
+    'Guided Project': 2.0,
+    'Course': 20.0,
+    'Specialization': 100.0,
+    'Professional Certificate': 100.0,
+}
+DEFAULT_HOURS = 20.0
+
+
 class LearningPathGraph:
     """Handles prerequisite-aware sequencing and timeline estimation."""
 
@@ -115,12 +124,25 @@ class LearningPathGraph:
     # Timeline estimation
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _resolve_hours(row) -> float:
+        """Return estimated_hours for a course row, using product-type default if missing."""
+        import math
+        h = row.get('estimated_hours')
+        if h is not None and not (isinstance(h, float) and math.isnan(h)):
+            return float(h)
+        product = row.get('learning_product', '') or ''
+        return PRODUCT_HOUR_DEFAULTS.get(product, DEFAULT_HOURS)
+
     def estimate_timeline(
         self,
         path: Dict[str, pd.DataFrame],
         hours_per_week: float = 10.0
     ) -> Dict:
         """Compute total hours and a week-by-week schedule for a learning path.
+
+        Uses product-type-aware hour defaults (Guided Project=2h, Course=20h,
+        Specialization/Professional Certificate=100h) when estimated_hours is missing.
 
         Args:
             path: Dict mapping level name → DataFrame of courses.
@@ -142,10 +164,7 @@ class LearningPathGraph:
             df = path[level]
             if df is None or df.empty:
                 continue
-            if 'estimated_hours' in df.columns:
-                hours = df['estimated_hours'].fillna(20.0).sum()
-            else:
-                hours = len(df) * 20.0  # default 20 hrs per course if unknown
+            hours = sum(self._resolve_hours(row) for _, row in df.iterrows())
             per_level[level] = {
                 'count': len(df),
                 'hours': round(hours, 1),

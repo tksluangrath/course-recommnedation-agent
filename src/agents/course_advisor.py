@@ -11,14 +11,15 @@ from pathlib import Path
 from typing import List, Optional
 
 from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 # Add parent paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
 
 from llm_config import LLMConfig
-from recommender_tools import get_all_tools
+from recommender_tools import get_all_tools, set_active_profile
+from profile_manager import ProfileManager
 
 SYSTEM_PROMPT = """You are a friendly and knowledgeable learning advisor. Your job is to help \
 users find the right courses, build personalized learning paths, and plan their education \
@@ -54,14 +55,23 @@ Guidelines:
 class CourseAdvisorAgent:
     """Conversational course recommendation agent."""
 
-    def __init__(self, provider: str = None, temperature: float = None):
+    def __init__(self, user_id: str = None, provider: str = None, temperature: float = None):
         """Initialize the agent.
 
         Args:
+            user_id: Username for profile persistence (defaults to "default")
             provider: LLM provider ("ollama" or "claude")
             temperature: LLM temperature
         """
         print("Initializing Course Advisor Agent...")
+
+        # User profile
+        self.user_id = user_id or "default"
+        self._profile_mgr = ProfileManager()
+        self._profile = self._profile_mgr.load(self.user_id)
+
+        # Wire profile hours into tools module
+        set_active_profile(self._profile)
 
         # Get ChatModel (required for tool calling)
         self.llm = LLMConfig.get_chat_llm(provider=provider, temperature=temperature)
@@ -79,7 +89,7 @@ class CourseAdvisorAgent:
 
         # Conversation history per session
         self._histories = {}
-        self._session_id = "default"
+        self._session_id = self.user_id
 
         print("Agent ready!\n")
 
@@ -102,8 +112,12 @@ class CourseAdvisorAgent:
         sid = session_id or self._session_id
         history = self._get_history(sid)
 
-        # Build messages: history + new message
-        messages = list(history) + [HumanMessage(content=message)]
+        # Inject profile context as a SystemMessage before history
+        context = self._profile_mgr.get_context_string(self.user_id)
+        prefix = [SystemMessage(content=context)] if context else []
+
+        # Build messages: profile context + history + new message
+        messages = prefix + list(history) + [HumanMessage(content=message)]
 
         try:
             result = self.agent.invoke({"messages": messages})
@@ -142,6 +156,35 @@ class CourseAdvisorAgent:
     def get_history(self, session_id: str = None) -> List:
         """Get conversation history."""
         return self._get_history(session_id)
+
+    def get_profile(self) -> dict:
+        """Return the current user profile dict."""
+        self._profile = self._profile_mgr.load(self.user_id)
+        return self._profile
+
+    def update_profile(self, **kwargs) -> dict:
+        """Update profile fields and refresh the active profile in tools."""
+        if 'known_skills' in kwargs and isinstance(kwargs['known_skills'], list):
+            self._profile = self._profile_mgr.save(
+                self.user_id, {**self._profile, **kwargs}
+            )
+        else:
+            self._profile = self._profile_mgr.save(
+                self.user_id, {**self._profile, **kwargs}
+            )
+        set_active_profile(self._profile)
+        return self._profile
+
+    def add_skills(self, skills: List[str]) -> List[str]:
+        """Add skills to the user profile (deduplicated)."""
+        updated = self._profile_mgr.add_skills(self.user_id, skills)
+        self._profile['known_skills'] = updated
+        set_active_profile(self._profile)
+        return updated
+
+    def display_profile(self) -> str:
+        """Return formatted profile string for display."""
+        return self._profile_mgr.format_display(self.user_id)
 
 
 if __name__ == "__main__":

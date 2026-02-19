@@ -6,6 +6,7 @@ user interactions, and recommendations.
 """
 
 import os
+import json
 from typing import List, Optional, Dict
 from datetime import datetime
 from sqlalchemy import (
@@ -92,6 +93,22 @@ class Skill(Base):
 
     def __repr__(self):
         return f"<Skill(id={self.id}, name='{self.name}')>"
+
+
+class UserProfile(Base):
+    """User profile model — persists across sessions."""
+    __tablename__ = 'user_profiles'
+
+    user_id = Column(String, primary_key=True)
+    known_skills = Column(Text, default='[]')       # JSON array: '["Python","SQL"]'
+    goals = Column(Text, default='')                # free-text learning goal
+    hours_per_week = Column(Float, default=10.0)
+    preferred_difficulty = Column(String, default=None)  # Beginner/Intermediate/Advanced
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<UserProfile(user_id='{self.user_id}', goals='{self.goals[:30]}')>"
 
 
 class UserInteraction(Base):
@@ -332,6 +349,73 @@ class DatabaseManager:
             raise e
         finally:
             session.close()
+
+    # ------------------------------------------------------------------
+    # User profile methods
+    # ------------------------------------------------------------------
+
+    def get_profile(self, user_id: str) -> Optional[UserProfile]:
+        """Get a user profile by user_id, or None if not found."""
+        session = self.Session()
+        try:
+            return session.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        finally:
+            session.close()
+
+    def get_or_create_profile(self, user_id: str) -> dict:
+        """Load an existing profile or create a blank one. Returns dict with deserialized fields."""
+        session = self.Session()
+        try:
+            profile = session.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+            if not profile:
+                profile = UserProfile(user_id=user_id)
+                session.add(profile)
+                session.commit()
+            return {
+                'user_id': profile.user_id,
+                'known_skills': json.loads(profile.known_skills or '[]'),
+                'goals': profile.goals or '',
+                'hours_per_week': profile.hours_per_week or 10.0,
+                'preferred_difficulty': profile.preferred_difficulty,
+            }
+        finally:
+            session.close()
+
+    def update_profile(self, user_id: str, **kwargs) -> dict:
+        """Update profile fields. Accepts known_skills as List[str] (auto-serialized).
+
+        Returns updated profile as dict.
+        """
+        session = self.Session()
+        try:
+            profile = session.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+            if not profile:
+                profile = UserProfile(user_id=user_id)
+                session.add(profile)
+
+            for key, value in kwargs.items():
+                if key == 'known_skills' and isinstance(value, list):
+                    value = json.dumps(value)
+                if hasattr(profile, key):
+                    setattr(profile, key, value)
+
+            session.commit()
+            return {
+                'user_id': profile.user_id,
+                'known_skills': json.loads(profile.known_skills or '[]'),
+                'goals': profile.goals or '',
+                'hours_per_week': profile.hours_per_week or 10.0,
+                'preferred_difficulty': profile.preferred_difficulty,
+            }
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
+    # ------------------------------------------------------------------
+    # Course prerequisite methods
+    # ------------------------------------------------------------------
 
     def get_course_by_name(self, course_name: str) -> Optional[Course]:
         """Get a course by exact or partial name match."""
