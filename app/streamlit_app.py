@@ -110,29 +110,55 @@ def _apply_theme() -> None:
         }
 
         /* ── Chat input ──────────────────────────────────────────────── */
-        .stChatInputContainer textarea {
-            background-color: #161d27;
-            border: 1px solid #2a3445;
-            border-radius: 12px;
-            color: #d4dcea;
-            font-family: 'Inter', sans-serif;
+        .stChatInputContainer,
+        .stChatInputContainer > div,
+        [data-testid="stChatInput"],
+        [data-testid="stChatInput"] > div {
+            background-color: #0e1117 !important;
         }
-        .stChatInputContainer textarea:focus {
-            border-color: #00bfa5;
-            box-shadow: 0 0 0 2px rgba(0,191,165,0.18);
+        .stChatInputContainer textarea,
+        [data-testid="stChatInput"] textarea {
+            background-color: #161d27 !important;
+            border: 1px solid #2a3445 !important;
+            border-radius: 12px !important;
+            color: #d4dcea !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+        .stChatInputContainer textarea:focus,
+        [data-testid="stChatInput"] textarea:focus {
+            border-color: #00bfa5 !important;
+            box-shadow: 0 0 0 2px rgba(0,191,165,0.18) !important;
+        }
+        .stChatInputContainer textarea::placeholder,
+        [data-testid="stChatInput"] textarea::placeholder {
+            color: #4a5568 !important;
         }
 
-        /* ── Text inputs ─────────────────────────────────────────────── */
+        /* ── Text inputs + labels ─────────────────────────────────────── */
         .stTextInput input, .stNumberInput input {
-            background-color: #161d27;
-            border: 1px solid #2a3445;
-            border-radius: 8px;
-            color: #d4dcea;
-            font-family: 'Inter', sans-serif;
+            background-color: #161d27 !important;
+            border: 1px solid #2a3445 !important;
+            border-radius: 8px !important;
+            color: #d4dcea !important;
+            font-family: 'Inter', sans-serif !important;
         }
         .stTextInput input:focus, .stNumberInput input:focus {
-            border-color: #00bfa5;
-            box-shadow: 0 0 0 2px rgba(0,191,165,0.15);
+            border-color: #00bfa5 !important;
+            box-shadow: 0 0 0 2px rgba(0,191,165,0.15) !important;
+        }
+        .stTextInput input::placeholder, .stNumberInput input::placeholder {
+            color: #4a5568 !important;
+        }
+        /* Widget labels (form field labels in sidebar) */
+        [data-testid="stWidgetLabel"] p,
+        .stTextInput label, .stNumberInput label,
+        .stSlider label, .stMultiSelect label {
+            color: #8fa3bc !important;
+            font-size: 0.82rem !important;
+        }
+        /* General paragraph text in sidebar */
+        section[data-testid="stSidebar"] p {
+            color: #9eb3cc;
         }
 
         /* ── Metric cards ────────────────────────────────────────────── */
