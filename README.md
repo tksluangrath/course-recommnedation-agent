@@ -413,7 +413,6 @@ This is a learning project, but suggestions, issues, and PRs are welcome. I'm fi
 ## Notes
 
 - Running everything locally to avoid API costs
-- Part of my research on AI in education (working with UVA's DART Lab)
 - Learning about both recommendation systems and AI agents simultaneously
 
 ## License
