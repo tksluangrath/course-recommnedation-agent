@@ -201,6 +201,15 @@ def _apply_theme() -> None:
             border-top-color: #00bfa5 !important;
         }
 
+        /* ── Sticky chat input bar (bottom white strip) ──────────────── */
+        [data-testid="stBottom"] {
+            background-color: #0e1117;
+            border-top: 1px solid #1e2a3a;
+        }
+        [data-testid="stBottom"] > div {
+            background-color: #0e1117;
+        }
+
         /* ── Scrollbar ───────────────────────────────────────────────── */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0e1117; }
