@@ -37,79 +37,33 @@ Run the CLI: `python src/agents/chat_cli.py --user yourname`
 
 ```mermaid
 graph TD
-    subgraph UI["User Interfaces"]
-        A[Web Browser]
-        C[Terminal]
+    User["👤 User"]
+
+    subgraph Interfaces["Interfaces"]
+        Web["Streamlit Web App"]
+        CLI["Terminal CLI"]
     end
 
-    subgraph Frontend["Frontend Layer"]
-        B["Streamlit App\napp/streamlit_app.py"]
-        D["CLI Chat\nchat_cli.py"]
+    subgraph Agent["AI Agent  ·  LangChain + Llama 3.1"]
+        Tools["9 Tools\nsearch · recommend · skill gap\nprerequisites · timeline · path"]
     end
 
-    subgraph Agent["AI Agent"]
-        E["CourseAdvisorAgent\ncourse_advisor.py"]
-        F["LangChain ReAct Agent"]
-        G["Ollama — Llama 3.1\n(local LLM)"]
-        H["ProfileManager\ncontext injection"]
+    subgraph Backend["Recommendation Engine"]
+        Hybrid["Hybrid Recommender\n60% content · 40% collab"]
+        Graph["Learning Path Graph\nprerequisites + sequencing"]
     end
 
-    subgraph Tools["9 Agent Tools  —  recommender_tools.py"]
-        T1[search_courses]
-        T2[create_learning_path]
-        T3[analyze_skill_gap]
-        T4[get_prerequisite_path]
-        T5[estimate_timeline]
-        T6[find_similar_courses]
-        T7[recommend_by_skills]
-        T8[get_course_info]
-        T9[get_popular_skills]
+    subgraph Storage["Data"]
+        SQLite[("SQLite\ncourses · profiles")]
+        Chroma[("ChromaDB\nvector search")]
     end
 
-    subgraph Recommenders["Recommendation Engine"]
-        R1["ContentBasedRecommender\ncontent_based.py"]
-        R2["CollaborativeRecommender\ncollaborative.py"]
-        R3["HybridRecommender\nhybrid.py  —  60% content / 40% collab"]
-        R4["LearningPathGraph\npath_graph.py  —  NetworkX DAG"]
-    end
-
-    subgraph Data["Data Layer"]
-        DS1[("SQLite\ncourses · skills · prereqs · profiles")]
-        DS2[("ChromaDB\nvector embeddings")]
-    end
-
-    subgraph Pipeline["Offline Data Pipeline"]
-        P1["Kaggle CSV\n3,404 Coursera courses"]
-        P2["DataCleaner\ndata_cleaner.py"]
-        P3["EmbeddingManager\nembeddings.py"]
-        P4["load_data_to_db.py"]
-    end
-
-    A --> B
-    C --> D
-    B --> E
-    D --> E
-
-    E --> F
-    F <--> G
-    E --> H
-    H --> DS1
-
-    F --> T1 & T2 & T3 & T4 & T5 & T6 & T7 & T8 & T9
-
-    T1 & T6 & T7 --> R3
-    T2 & T4 & T5 --> R4
-    T3 --> R1
-    T8 & T9 --> DS1
-
-    R3 --> R1 & R2
-    R1 --> DS2
-    R2 --> DS1
-    R4 --> DS1
-
-    P1 --> P2 --> P4 & P3
-    P4 --> DS1
-    P3 --> DS2
+    User --> Web & CLI
+    Web & CLI --> Agent
+    Agent --> Tools
+    Tools --> Hybrid & Graph
+    Hybrid --> Chroma & SQLite
+    Graph --> SQLite
 ```
 
 ## Features Built So Far
