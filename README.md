@@ -19,37 +19,128 @@ Plus, I'm reading "Principles of Building AI Agents 2nd Edition" and wanted to a
 
 ## Current Status
 
-**Phases 1–3 Complete — AI Agent is live and functional**
+**All 6 Phases Complete — CLI + Streamlit web interface, user profiles, personalized timelines**
 
 - **Phase 1** ✅ — Data pipeline, semantic search, LLM integration (Ollama + llama3.1)
 - **Phase 2** ✅ — Content-based, collaborative, and hybrid recommendation engines + Coursera API integration
 - **Phase 3** ✅ — Conversational AI agent with 7 tools, conversation memory, CLI chat interface
-- **Phase 4** 🔜 — Learning path logic (prerequisite chains, timeline estimation)
-- **Phase 5** 🔜 — Multi-turn improvements, user feedback
-- **Phase 6** 🔜 — Streamlit web interface
+- **Phase 4** ✅ — Prerequisite chains, intra-level course sequencing, timeline estimation (9 tools total)
+- **Phase 5** ✅ — User profile persistence, personalized greetings, smarter timeline defaults
+- **Phase 6** ✅ — Streamlit web interface with chat, inline charts, course explorer, profile editor
 
-You can chat with the agent right now by running `python src/agents/chat_cli.py`.
+Run the web app: `streamlit run app/streamlit_app.py`
+Run the CLI: `python src/agents/chat_cli.py --user yourname`
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+    subgraph UI["User Interfaces"]
+        A[Web Browser]
+        C[Terminal]
+    end
+
+    subgraph Frontend["Frontend Layer"]
+        B["Streamlit App\napp/streamlit_app.py"]
+        D["CLI Chat\nchat_cli.py"]
+    end
+
+    subgraph Agent["AI Agent"]
+        E["CourseAdvisorAgent\ncourse_advisor.py"]
+        F["LangChain ReAct Agent"]
+        G["Ollama — Llama 3.1\n(local LLM)"]
+        H["ProfileManager\ncontext injection"]
+    end
+
+    subgraph Tools["9 Agent Tools  —  recommender_tools.py"]
+        T1[search_courses]
+        T2[create_learning_path]
+        T3[analyze_skill_gap]
+        T4[get_prerequisite_path]
+        T5[estimate_timeline]
+        T6[find_similar_courses]
+        T7[recommend_by_skills]
+        T8[get_course_info]
+        T9[get_popular_skills]
+    end
+
+    subgraph Recommenders["Recommendation Engine"]
+        R1["ContentBasedRecommender\ncontent_based.py"]
+        R2["CollaborativeRecommender\ncollaborative.py"]
+        R3["HybridRecommender\nhybrid.py  —  60% content / 40% collab"]
+        R4["LearningPathGraph\npath_graph.py  —  NetworkX DAG"]
+    end
+
+    subgraph Data["Data Layer"]
+        DS1[("SQLite\ncourses · skills · prereqs · profiles")]
+        DS2[("ChromaDB\nvector embeddings")]
+    end
+
+    subgraph Pipeline["Offline Data Pipeline"]
+        P1["Kaggle CSV\n3,404 Coursera courses"]
+        P2["DataCleaner\ndata_cleaner.py"]
+        P3["EmbeddingManager\nembeddings.py"]
+        P4["load_data_to_db.py"]
+    end
+
+    A --> B
+    C --> D
+    B --> E
+    D --> E
+
+    E --> F
+    F <--> G
+    E --> H
+    H --> DS1
+
+    F --> T1 & T2 & T3 & T4 & T5 & T6 & T7 & T8 & T9
+
+    T1 & T6 & T7 --> R3
+    T2 & T4 & T5 --> R4
+    T3 --> R1
+    T8 & T9 --> DS1
+
+    R3 --> R1 & R2
+    R1 --> DS2
+    R2 --> DS1
+    R4 --> DS1
+
+    P1 --> P2 --> P4 & P3
+    P4 --> DS1
+    P3 --> DS2
+```
 
 ## Features Built So Far
 
-**AI Agent (Phase 3):**
+**AI Agent (Phases 3–5):**
 - Chat with a course advisor in natural language
-- Automatically selects the right tools (search, recommend, skill gap analysis, etc.)
-- Builds Beginner → Intermediate → Advanced learning paths
+- Automatically selects the right tools (search, recommend, skill gap analysis, timeline, prerequisites, etc.)
+- Builds Beginner → Intermediate → Advanced learning paths with per-course hour estimates
+- Estimates timeline in weeks based on your available study hours per week
+- Shows prerequisite chains so you know exactly what to take before a target course
 - Remembers your conversation (last 10 exchanges per session)
-- Explains why it's recommending certain courses
+- User profiles persisted across sessions in SQLite — skills, goals, and study pace saved automatically
+- Personalized greeting on startup for returning users
 
 **Recommendation Engine (Phase 2):**
 - Content-based filtering using sentence-transformer embeddings + ChromaDB
 - Collaborative filtering (item-item similarity, user-user similarity with synthetic users)
 - Hybrid blending (60% content + 40% collaborative) with diversity controls
-- Skill gap analysis between current and target skills
+- Skill gap analysis with foundational-first ordering of missing skills
 - Evaluation metrics: Precision@K, Recall@K, NDCG@K, catalog coverage, diversity
 
-**Data Pipeline (Phase 1 + 2):**
+**Learning Path Logic (Phase 4):**
+- 3,682 prerequisite relationships seeded heuristically across 2,759 courses
+- Intra-level topological sequencing using NetworkX (foundational courses before advanced within the same difficulty tier)
+- Product-type-aware timeline defaults: Guided Project=2h, Course=20h, Specialization=100h
+- Week-by-week study schedule output
+
+**Data Pipeline (Phases 1–2):**
 - 2025 Coursera dataset: 3,404 raw → 2,759 unique courses, 1,754 skills
 - Coursera OAuth2 API integration for live course data
-- SQLite database with course metadata, skills, and skill-course links
+- SQLite database with course metadata, skills, skill-course links, prerequisites, and user profiles
 - ChromaDB vector store for semantic search
 
 ## Quick Start
@@ -109,30 +200,60 @@ python src/utils/embeddings.py
 
 8. Start the AI agent
 ```bash
+# Start as a named user (profile is saved across sessions)
+python src/agents/chat_cli.py --user yourname
+
+# Or start without a username (prompts on startup)
 python src/agents/chat_cli.py
 ```
 
 ### Example Agent Session
 
 ```
-You: Create a learning path for becoming a data scientist. I already know Python and SQL.
+$ python src/agents/chat_cli.py --user alice
 
-Agent: Great foundation! Here's your personalized learning path:
+Welcome back, alice!
+  Goal       : become a data scientist
+  Skills     : Python, SQL
+  Study time : 8 hrs/week
 
-  Beginner:
-  • Applied Data Science (IBM) — covers core data science workflow
-  • Data Science Fundamentals (UC Irvine)
-  • Data Literacy (Johns Hopkins)
+You: Create a learning path. I already know Python and SQL.
 
-  Intermediate:
-  • Data Science at Scale (University of Washington)
-  • Applied Data Science with Python (University of Michigan)
-  • Data Structures and Algorithms (UCSD)
+Advisor: Great foundation! Here's your personalized learning path:
 
-  Advanced:
-  • Google Business Intelligence
-  • Google Advanced Data Analytics
-  • Data Warehousing for Business Intelligence (University of Colorado)
+  Beginner (~160 hrs):
+  • Applied Data Science (IBM) — ~20 hrs
+  • Data Science Fundamentals (UC Irvine) — ~20 hrs
+  • Data Literacy (Johns Hopkins) — ~120 hrs
+
+  Intermediate (~200 hrs):
+  • Applied Data Science with Python (University of Michigan) — ~20 hrs
+  • Data Science at Scale (University of Washington) — ~80 hrs
+  • Data Structures and Algorithms (UCSD) — ~100 hrs
+
+  Advanced (~240 hrs):
+  • Google Advanced Data Analytics — ~20 hrs
+  • Google Business Intelligence — ~20 hrs
+  • Data Warehousing for Business Intelligence — ~200 hrs
+
+  --- Timeline (8 hrs/week) ---
+  Total: ~600 hrs (~75 weeks)
+  Weeks 1–20: Beginner (3 courses, ~160 hrs)
+  Weeks 21–45: Intermediate (3 courses, ~200 hrs)
+  Weeks 46–75: Advanced (3 courses, ~240 hrs)
+```
+
+### Profile Commands
+
+Once you're in the chat:
+```
+/profile          — show your saved profile
+/skills Python, SQL, R  — add skills to your profile
+/goal become a data scientist  — set your learning goal
+/hours 8          — set available study hours per week
+/reset            — clear conversation history
+/history          — show conversation history
+/quit             — save and exit
 ```
 
 ## Quick Examples
@@ -142,7 +263,7 @@ Agent: Great foundation! Here's your personalized learning path:
 import torch  # must be first on Windows + Python 3.13
 from src.agents.course_advisor import CourseAdvisorAgent
 
-agent = CourseAdvisorAgent()
+agent = CourseAdvisorAgent(user_id="alice")
 response = agent.chat("What skills should I learn for machine learning?")
 print(response)
 ```
@@ -154,7 +275,7 @@ from src.recommender.hybrid import HybridRecommender
 
 rec = HybridRecommender()
 results = rec.recommend("machine learning for beginners", n=5)
-print(results[['course_name', 'difficulty_level', 'score']])
+print(results[['course_name', 'difficulty_level', 'hybrid_score']])
 ```
 
 **Semantic search:**
@@ -171,6 +292,9 @@ print(results[['course_name', 'difficulty_level']])
 
 ```
 course-recommnedation-agent/
+├── app/
+│   └── streamlit_app.py        # Streamlit web UI (Phase 6)
+│
 ├── data/
 │   ├── raw/                    # Downloaded datasets
 │   ├── processed/              # Cleaned data
@@ -179,40 +303,45 @@ course-recommnedation-agent/
 ├── src/
 │   ├── agents/
 │   │   ├── course_advisor.py   # CourseAdvisorAgent (LangChain v1.2)
-│   │   └── chat_cli.py         # Terminal chat interface
+│   │   └── chat_cli.py         # Terminal chat interface with profile commands
 │   ├── recommender/
 │   │   ├── content_based.py    # Embedding-based recommender
 │   │   ├── collaborative.py    # Item-item & user-user filtering
 │   │   ├── hybrid.py           # 60/40 blended recommender
-│   │   └── evaluator.py        # Precision/Recall/NDCG metrics
+│   │   ├── evaluator.py        # Precision/Recall/NDCG metrics
+│   │   └── path_graph.py       # Prerequisite chains, sequencing, timeline
 │   ├── tools/
-│   │   └── recommender_tools.py  # 7 LangChain @tool functions
+│   │   └── recommender_tools.py  # 9 LangChain @tool functions
 │   └── utils/
-│       ├── data_cleaner.py     # 2025 dataset column mapping
-│       ├── database.py         # SQLite ORM (SQLAlchemy)
+│       ├── data_cleaner.py     # 2025 dataset cleaning + sample data generation
+│       ├── database.py         # SQLite ORM (SQLAlchemy) + ProfileManager
 │       ├── embeddings.py       # ChromaDB + sentence-transformers
 │       ├── llm_config.py       # Ollama / Anthropic LLM setup
-│       ├── coursera_api.py     # Coursera OAuth2 API collector
-│       └── api_config.py       # API credential management
+│       ├── load_data_to_db.py  # ETL: cleaned CSV → SQLite + skill links
+│       ├── api_collectors.py   # CourseraAPI (OAuth2) + edX + YouTube collectors
+│       └── api_config.py       # API credential config + APICollector
 │
-├── PHASE2_COMPLETE.md          # Phase 2 implementation notes
-├── PHASE3_COMPLETE.md          # Phase 3 implementation notes
+├── fetch_coursera_data.py      # Download Kaggle dataset via kagglehub
+├── INSTRUCTIONS.md             # Full setup and usage guide
+├── PHASE1_COMPLETE.md … PHASE6_COMPLETE.md
 └── requirements.txt
 ```
 
 ## Agent Tools
 
-The agent has 7 tools it can call autonomously:
+The agent has 9 tools it can call autonomously:
 
 | Tool | What it does |
 |---|---|
 | `search_courses` | Natural language course search |
 | `find_similar_courses` | Find courses similar to a given one |
 | `recommend_by_skills` | Recommend by target skill list |
-| `create_learning_path` | Build Beginner → Advanced roadmap |
-| `analyze_skill_gap` | Find missing skills for a goal |
+| `create_learning_path` | Build Beginner → Advanced roadmap with timeline |
+| `analyze_skill_gap` | Find missing skills in foundational-first order |
 | `get_course_info` | Detailed info about a specific course |
 | `get_popular_skills` | Trending skills by category |
+| `estimate_learning_timeline` | Estimate weeks to complete a topic given hrs/week |
+| `get_prerequisite_path` | Show the prerequisite chain for a specific course |
 
 ## Tech Stack
 
@@ -222,14 +351,16 @@ The agent has 7 tools it can call autonomously:
 - **langchain-ollama** — ChatOllama for tool-calling support
 - **ChromaDB** — vector database for semantic search
 - **sentence-transformers** (`all-MiniLM-L6-v2`) — course embeddings
-- **SQLite + SQLAlchemy** — course metadata database
+- **SQLite + SQLAlchemy** — course metadata, prerequisites, and user profiles
+- **NetworkX** — prerequisite graph, topological sequencing
 - **Coursera OAuth2 API** — live course data
-- **Streamlit** — planned for Phase 6 web interface
+- **Streamlit + Plotly** — web interface with inline charts (Phase 6)
 
 ## Roadmap
 
 **Phase 1: Foundation** ✅
 - Project setup, data pipeline, semantic search, LLM integration
+- See [PHASE1_COMPLETE.md](PHASE1_COMPLETE.md)
 
 **Phase 2: Recommendation Algorithms** ✅
 - Content-based filtering, collaborative filtering, hybrid blending
@@ -240,26 +371,29 @@ The agent has 7 tools it can call autonomously:
 - LangChain agent with 7 tools, conversation memory, CLI interface
 - See [PHASE3_COMPLETE.md](PHASE3_COMPLETE.md)
 
-**Phase 4: Learning Path Logic** 🔜
-- Prerequisite chains, skill graph modeling
-- Skill gap analysis with course sequencing
-- Timeline estimation from course hours
+**Phase 4: Learning Path Logic** ✅
+- Prerequisite chains (3,682 relationships), intra-level course sequencing
+- Timeline estimation with week-by-week schedule
+- See [PHASE4_COMPLETE.md](PHASE4_COMPLETE.md)
 
-**Phase 5: Improvements** 🔜
-- Better multi-turn conversations
-- User feedback loop
-- Preference persistence
+**Phase 5: User Profiles & Smarter Timelines** ✅
+- User profiles persisted in SQLite across sessions
+- Profile context injected into every agent conversation turn automatically
+- Product-type-aware timeline defaults (Guided Project=2h, Course=20h, Specialization=100h)
+- See [PHASE5_COMPLETE.md](PHASE5_COMPLETE.md)
 
-**Phase 6: Web Interface** 🔜
-- Streamlit chat UI
-- Learning path visualization
-- User profiles and progress tracking
-- Export learning plans
+**Phase 6: Web Interface** ✅
+- Streamlit chat UI with dark theme and teal accents
+- Inline Plotly charts (Gantt timeline + skill gap donut)
+- Profile editor, quick action forms, filterable course explorer
+- See [PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)
 
 ## Known Issues
 
 - **PyTorch DLL Loading (Windows + Python 3.13):** Scripts importing sentence-transformers must have `import torch` as the very first import. The CLI chat handles this automatically.
 - **First query latency:** The first query initializes the embedding model, ChromaDB, and synthetic user data — this takes ~10–20 seconds. Subsequent queries are fast.
+- **Timeline hours can be large:** The dataset includes Specializations (multi-course bundles) which report 100+ estimated hours. The product-type defaults (Phase 5) mitigate this for courses with missing data, but Specializations with known hours still contribute their full length.
+- **Cross-category prerequisites:** The heuristic prerequisite seeder only links courses within the same category. Cross-category dependencies (e.g., "Statistics before Machine Learning") are not captured.
 
 ## About the Data
 
@@ -267,6 +401,7 @@ Using the Coursera 2025 dataset from Kaggle:
 - 3,404 raw → 2,759 unique courses after deduplication
 - 1,754 unique skills extracted from `Gained Skills` field
 - 38,204 skill-course links
+- 3,682 prerequisite relationships (heuristically seeded)
 - Top skills: data analysis (446 courses), machine learning (310), Python (287), data science (241), SQL (198)
 
 Also supports live data from the Coursera API (OAuth2 client credentials) which provides real course descriptions.
@@ -289,9 +424,9 @@ MIT License — use it however you want
 
 - [LangChain docs](https://python.langchain.com/)
 - [Ollama](https://ollama.com/)
-- [Dataset (Kaggle)](https://www.kaggle.com/datasets/khusheekapoor/coursera-courses-dataset-2021)
+- [Dataset (Kaggle — 2025)](https://www.kaggle.com/datasets/yosefxx590/coursera-courses-and-skills-dataset-2025)
 
 ---
 
-Last updated: February 18, 2026
-Status: Active development — Phase 3 complete, Phase 4 up next
+Last updated: February 2026
+Status: All 6 phases complete

@@ -1,7 +1,7 @@
 """
 Data Cleaner for Course Recommendation System
 
-Cleans and preprocesses course data from Coursera/Udemy/other sources.
+Cleans and preprocesses Coursera course data.
 Standardizes difficulty levels, extracts skills, and prepares data for database.
 """
 
@@ -247,6 +247,57 @@ class DataCleaner:
                 if keyword in combined_text:
                     return category
         return 'Other'
+
+    def download_sample_data(self, save_path: str = None) -> pd.DataFrame:
+        """Create a small synthetic dataset for testing when no real data is available.
+
+        Args:
+            save_path: Path to save sample data (default: data/raw/sample_courses.csv)
+
+        Returns:
+            DataFrame with 20 sample courses
+        """
+        if save_path is None:
+            save_path = self.raw_data_path / "sample_courses.csv"
+
+        print("Creating sample course data for testing...")
+
+        sample_data = {
+            'Title': [
+                'Machine Learning Specialization', 'Deep Learning Specialization',
+                'Python for Everybody', 'Data Science Professional Certificate',
+                'Full Stack Web Development', 'Digital Marketing Specialization',
+                'Financial Markets', 'Introduction to Psychology',
+                'Cloud Computing Fundamentals', 'Cybersecurity Specialization',
+                'Introduction to Artificial Intelligence', 'Data Structures and Algorithms',
+                'Business Analytics Specialization', 'Excel Skills for Business',
+                'Project Management Professional', 'UX Design Specialization',
+                'SQL for Data Science', 'R Programming',
+                'TensorFlow Developer Certificate', 'AWS Cloud Practitioner'
+            ],
+            'Institution': [
+                'Stanford University', 'DeepLearning.AI', 'University of Michigan', 'IBM',
+                'Meta', 'University of Illinois', 'Yale University', 'Yale University',
+                'Google Cloud', 'University of Maryland', 'Stanford University', 'UC San Diego',
+                'University of Pennsylvania', 'Macquarie University', 'Google', 'Google',
+                'UC Davis', 'Johns Hopkins University', 'DeepLearning.AI', 'Amazon Web Services'
+            ],
+            'Level': [
+                'Intermediate', 'Advanced', 'Beginner', 'Beginner', 'Intermediate',
+                'Beginner', 'Beginner', 'Beginner', 'Beginner', 'Intermediate',
+                'Intermediate', 'Intermediate', 'Beginner', 'Beginner', 'Intermediate',
+                'Beginner', 'Beginner', 'Beginner', 'Intermediate', 'Beginner'
+            ],
+            'Rate': [4.9, 4.8, 4.8, 4.7, 4.6, 4.7, 4.8, 4.9, 4.5, 4.6, 4.7, 4.6, 4.5, 4.7, 4.6, 4.8, 4.6, 4.5, 4.7, 4.6],
+        }
+
+        df = pd.DataFrame(sample_data)
+        df.to_csv(save_path, index=False)
+
+        print(f"Sample data created with {len(df)} courses")
+        print(f"Saved to: {save_path}")
+
+        return df
 
     def save_cleaned_data(self, df: pd.DataFrame, filename: str = "cleaned_courses.csv"):
         """Save cleaned data to CSV."""

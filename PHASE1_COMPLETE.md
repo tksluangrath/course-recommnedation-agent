@@ -189,8 +189,8 @@ print(results[['course_name', 'difficulty_level', 'similarity_score']])
 2. **Real Course Data**
    - Currently using sample data (20 courses)
    - For production, download Coursera dataset from Kaggle:
-     https://www.kaggle.com/datasets/khusheekapoor/coursera-courses-dataset-2021
-   - Place in `data/raw/Coursera.csv` and run the data pipeline
+     https://www.kaggle.com/datasets/yosefxx590/coursera-courses-and-skills-dataset-2025
+   - Place in `data/raw/coursera_courses_2025.csv` and run the data pipeline
 
 ## Files Created
 

@@ -197,17 +197,21 @@ Learning Path: machine learning
 2. **Prerequisite chain limited to seeded data** — the heuristic covers same-category pairs with shared skills. Cross-category prerequisites (e.g., "Statistics is a prerequisite for ML") are not captured because they are different categories in the dataset.
 3. **PyTorch DLL** (Windows + Python 3.13) — `import torch` must be first. The agent CLI handles this automatically.
 
-## What's Next (Phase 5)
+## Phase 5 Delivered
 
-Phase 5 focuses on **Improvements and Personalization**:
+Phase 5 addressed the personalization and timeline accuracy gaps identified here:
 
-1. **User preference persistence** — save skill level, topics, and past interactions to disk/DB so the agent "remembers" users across sessions
-2. **Better multi-turn context** — agent uses earlier conversation context to refine recommendations without re-asking for the same info
-3. **Feedback loop** — user can say "I didn't like that" or "more like this" and the agent adjusts within the session
-4. **Smarter timeline estimates** — filter out Specializations from timeline math, use individual course hours
+| Planned | Delivered |
+|---|---|
+| User preference persistence | ✅ `UserProfile` SQLAlchemy model + `ProfileManager`; skills, goal, and hours/week saved to SQLite and loaded on startup |
+| Better multi-turn context | ✅ Profile context injected as `SystemMessage` before every conversation turn — agent always knows user's skills and goal |
+| Smarter timeline estimates | ✅ Product-type-aware defaults (Guided Project=2h, Course=20h, Specialization=100h) replace flat 20h fallback |
+| Feedback loop ("I didn't like that") | ❌ Not implemented — deferred to Phase 6 or a future iteration |
+
+See [PHASE5_COMPLETE.md](PHASE5_COMPLETE.md) for full details.
 
 ---
 
 **Status**: Phase 4 Complete
-**Next Phase**: Phase 5 - Improvements and Personalization
+**Next Phase**: Phase 5 Complete — see [PHASE5_COMPLETE.md](PHASE5_COMPLETE.md)
 **Updated**: February 19, 2026

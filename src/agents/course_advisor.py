@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
 
 from llm_config import LLMConfig
 from recommender_tools import get_all_tools, set_active_profile
-from profile_manager import ProfileManager
+from database import ProfileManager
 
 SYSTEM_PROMPT = """You are a friendly and knowledgeable learning advisor. Your job is to help \
 users find the right courses, build personalized learning paths, and plan their education \
