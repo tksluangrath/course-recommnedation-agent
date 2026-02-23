@@ -1,9 +1,3 @@
----
-noteId: "4c98f0c00c2911f18adf3f60997cc249"
-tags: []
-
----
-
 # Phase 2 Recommendation Algorithms - COMPLETE
 
 ## Summary

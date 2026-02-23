@@ -1,9 +1,3 @@
----
-noteId: "e6fe5bd010f411f1883b1bea3b63b8be"
-tags: []
-
----
-
 # Phase 7 Complete — Docker Compose Deployment
 
 ## Summary

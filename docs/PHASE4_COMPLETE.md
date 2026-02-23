@@ -1,9 +1,3 @@
----
-noteId: "c1a3f2d00d8511f18adf3f60997cc249"
-tags: []
-
----
-
 # Phase 4 Learning Path Logic - COMPLETE
 
 ## Summary

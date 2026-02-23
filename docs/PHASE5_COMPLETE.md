@@ -1,9 +1,3 @@
----
-noteId: "8b19d6b00dc911f193f425dd705df8b0"
-tags: []
-
----
-
 # Phase 5 Complete — User Profile Persistence & Smarter Timelines
 
 ## Summary

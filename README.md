@@ -310,7 +310,8 @@ course-recommnedation-agent/
 ├── docker-compose.yml          # Orchestrates app + ollama containers (Phase 7)
 ├── docker-entrypoint.sh        # Pulls model on first run, starts Streamlit (Phase 7)
 ├── INSTRUCTIONS.md             # Full setup and usage guide
-├── PHASE1_COMPLETE.md … PHASE7_COMPLETE.md
+├── docs/
+│   └── PHASE1_COMPLETE.md … PHASE7_COMPLETE.md
 └── requirements.txt
 ```
 
@@ -348,39 +349,39 @@ The agent has 9 tools it can call autonomously:
 
 **Phase 1: Foundation** ✅
 - Project setup, data pipeline, semantic search, LLM integration
-- See [PHASE1_COMPLETE.md](PHASE1_COMPLETE.md)
+- See [PHASE1_COMPLETE.md](docs/PHASE1_COMPLETE.md)
 
 **Phase 2: Recommendation Algorithms** ✅
 - Content-based filtering, collaborative filtering, hybrid blending
 - Evaluation metrics, Coursera API integration
-- See [PHASE2_COMPLETE.md](PHASE2_COMPLETE.md)
+- See [PHASE2_COMPLETE.md](docs/PHASE2_COMPLETE.md)
 
 **Phase 3: AI Agent** ✅
 - LangChain agent with 7 tools, conversation memory, CLI interface
-- See [PHASE3_COMPLETE.md](PHASE3_COMPLETE.md)
+- See [PHASE3_COMPLETE.md](docs/PHASE3_COMPLETE.md)
 
 **Phase 4: Learning Path Logic** ✅
 - Prerequisite chains (3,682 relationships), intra-level course sequencing
 - Timeline estimation with week-by-week schedule
-- See [PHASE4_COMPLETE.md](PHASE4_COMPLETE.md)
+- See [PHASE4_COMPLETE.md](docs/PHASE4_COMPLETE.md)
 
 **Phase 5: User Profiles & Smarter Timelines** ✅
 - User profiles persisted in SQLite across sessions
 - Profile context injected into every agent conversation turn automatically
 - Product-type-aware timeline defaults (Guided Project=2h, Course=20h, Specialization=100h)
-- See [PHASE5_COMPLETE.md](PHASE5_COMPLETE.md)
+- See [PHASE5_COMPLETE.md](docs/PHASE5_COMPLETE.md)
 
 **Phase 6: Web Interface** ✅
 - Streamlit chat UI with dark theme and teal accents
 - Inline Plotly charts (Gantt timeline + skill gap donut)
 - Profile editor, quick action forms, filterable course explorer
-- See [PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)
+- See [PHASE6_COMPLETE.md](docs/PHASE6_COMPLETE.md)
 
 **Phase 7: Docker** ✅
 - Docker Compose setup: `app` container (Python/Streamlit) + `ollama` container
 - Model pulled automatically on first run, cached in named volume
 - Existing `data/` mounted as volume — no re-loading needed
-- See [PHASE7_COMPLETE.md](PHASE7_COMPLETE.md)
+- See [PHASE7_COMPLETE.md](docs/PHASE7_COMPLETE.md)
 
 ## Known Issues
 
