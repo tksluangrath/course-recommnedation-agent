@@ -74,7 +74,7 @@ graph TD
     Graph --> SQLite
 ```
 
-## Features Built So Far
+## Features
 
 **AI Agent (Phases 3–5):**
 - Chat with a course advisor in natural language
@@ -179,7 +179,6 @@ data/raw/coursera_courses_2025.csv
 7. Initialize the pipeline
 ```bash
 python src/utils/data_cleaner.py
-python src/utils/database.py
 python src/utils/load_data_to_db.py
 python src/utils/embeddings.py
 ```
@@ -300,7 +299,7 @@ course-recommnedation-agent/
 │       ├── data_cleaner.py     # 2025 dataset cleaning + sample data generation
 │       ├── database.py         # SQLite ORM (SQLAlchemy) + ProfileManager
 │       ├── embeddings.py       # ChromaDB + sentence-transformers
-│       ├── llm_config.py       # Ollama / Anthropic LLM setup
+│       ├── llm_config.py       # Ollama / Claude LLM setup
 │       ├── load_data_to_db.py  # ETL: cleaned CSV → SQLite + skill links
 │       ├── api_collectors.py   # CourseraAPI (OAuth2) + edX + YouTube collectors
 │       └── api_config.py       # API credential config + APICollector
