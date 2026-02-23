@@ -19,7 +19,7 @@ Plus, I'm reading "Principles of Building AI Agents 2nd Edition" and wanted to a
 
 ## Current Status
 
-**All 6 Phases Complete — CLI + Streamlit web interface, user profiles, personalized timelines**
+**All 7 Phases Complete — CLI + Streamlit web interface, user profiles, personalized timelines, Docker**
 
 - **Phase 1** ✅ — Data pipeline, semantic search, LLM integration (Ollama + llama3.1)
 - **Phase 2** ✅ — Content-based, collaborative, and hybrid recommendation engines + Coursera API integration
@@ -27,9 +27,17 @@ Plus, I'm reading "Principles of Building AI Agents 2nd Edition" and wanted to a
 - **Phase 4** ✅ — Prerequisite chains, intra-level course sequencing, timeline estimation (9 tools total)
 - **Phase 5** ✅ — User profile persistence, personalized greetings, smarter timeline defaults
 - **Phase 6** ✅ — Streamlit web interface with chat, inline charts, course explorer, profile editor
+- **Phase 7** ✅ — Docker Compose setup: one-command deployment, no manual installs
 
-Run the web app: `streamlit run app/streamlit_app.py`
-Run the CLI: `python src/agents/chat_cli.py --user yourname`
+Run with Docker (recommended):
+```bash
+docker compose up --build
+```
+Open `http://localhost:8501`
+
+Or run locally:
+- Web app: `streamlit run app/streamlit_app.py`
+- CLI: `python src/agents/chat_cli.py --user yourname`
 
 ---
 
@@ -99,13 +107,37 @@ graph TD
 
 ## Quick Start
 
-### Prerequisites
+### Option A — Docker (recommended, no installs needed)
 
+Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+1. Clone the repo
+```bash
+git clone https://github.com/tksluangrath/course-recommnedation-agent.git
+cd course-recommnedation-agent
+```
+
+2. Copy the environment file
+```bash
+cp .env.template .env
+```
+
+3. Start everything
+```bash
+docker compose up --build
+```
+
+The first run downloads Llama 3.1 (~4.7 GB). Subsequent runs start in seconds.
+Open `http://localhost:8501` in your browser.
+
+---
+
+### Option B — Manual Setup
+
+#### Prerequisites
 - Python 3.9+
 - At least 8GB RAM (for running the LLM locally)
 - About 10GB free disk space
-
-### Setup
 
 1. Clone the repo
 ```bash
@@ -152,13 +184,11 @@ python src/utils/load_data_to_db.py
 python src/utils/embeddings.py
 ```
 
-8. Start the AI agent
+8. Start the app
 ```bash
-# Start as a named user (profile is saved across sessions)
+streamlit run app/streamlit_app.py
+# or CLI:
 python src/agents/chat_cli.py --user yourname
-
-# Or start without a username (prompts on startup)
-python src/agents/chat_cli.py
 ```
 
 ### Example Agent Session
@@ -276,8 +306,11 @@ course-recommnedation-agent/
 │       └── api_config.py       # API credential config + APICollector
 │
 ├── fetch_coursera_data.py      # Download Kaggle dataset via kagglehub
+├── Dockerfile                  # Python 3.11-slim app image (Phase 7)
+├── docker-compose.yml          # Orchestrates app + ollama containers (Phase 7)
+├── docker-entrypoint.sh        # Pulls model on first run, starts Streamlit (Phase 7)
 ├── INSTRUCTIONS.md             # Full setup and usage guide
-├── PHASE1_COMPLETE.md … PHASE6_COMPLETE.md
+├── PHASE1_COMPLETE.md … PHASE7_COMPLETE.md
 └── requirements.txt
 ```
 
@@ -309,6 +342,7 @@ The agent has 9 tools it can call autonomously:
 - **NetworkX** — prerequisite graph, topological sequencing
 - **Coursera OAuth2 API** — live course data
 - **Streamlit + Plotly** — web interface with inline charts (Phase 6)
+- **Docker + Docker Compose** — containerized deployment (Phase 7)
 
 ## Roadmap
 
@@ -341,6 +375,12 @@ The agent has 9 tools it can call autonomously:
 - Inline Plotly charts (Gantt timeline + skill gap donut)
 - Profile editor, quick action forms, filterable course explorer
 - See [PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)
+
+**Phase 7: Docker** ✅
+- Docker Compose setup: `app` container (Python/Streamlit) + `ollama` container
+- Model pulled automatically on first run, cached in named volume
+- Existing `data/` mounted as volume — no re-loading needed
+- See [PHASE7_COMPLETE.md](PHASE7_COMPLETE.md)
 
 ## Known Issues
 
@@ -382,4 +422,4 @@ MIT License — use it however you want
 ---
 
 Last updated: February 2026
-Status: All 6 phases complete
+Status: All 7 phases complete
