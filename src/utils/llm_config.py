@@ -28,6 +28,7 @@ class LLMConfig:
     # Ollama Configuration (fallback)
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
     OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.7"))
+    OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     
     @staticmethod
     def get_llm(provider: Optional[str] = None, temperature: Optional[float] = None):
@@ -81,7 +82,8 @@ class LLMConfig:
         try:
             llm = Ollama(
                 model=LLMConfig.OLLAMA_MODEL,
-                temperature=temperature or LLMConfig.OLLAMA_TEMPERATURE
+                base_url=LLMConfig.OLLAMA_HOST,
+                temperature=temperature or LLMConfig.OLLAMA_TEMPERATURE,
             )
 
             print(f"Using Ollama: {LLMConfig.OLLAMA_MODEL}")
@@ -117,7 +119,8 @@ class LLMConfig:
         try:
             llm = ChatOllama(
                 model=LLMConfig.OLLAMA_MODEL,
-                temperature=temperature or LLMConfig.OLLAMA_TEMPERATURE
+                base_url=LLMConfig.OLLAMA_HOST,
+                temperature=temperature or LLMConfig.OLLAMA_TEMPERATURE,
             )
 
             print(f"Using ChatOllama: {LLMConfig.OLLAMA_MODEL}")
