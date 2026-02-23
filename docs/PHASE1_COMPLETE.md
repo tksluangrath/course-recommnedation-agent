@@ -96,28 +96,16 @@ course-recommendation-agent/
 4. **Skill Extraction**: Automatically identifies skills from descriptions
 5. **Category Inference**: Automatically categorizes courses
 
-## What's Next (Phase 2)
+## Phase 2 Delivered
 
-Now that Phase 1 is complete, you're ready to move to **Phase 2: Basic Recommender**:
+| Planned | Delivered |
+|---|---|
+| Content-based filtering via ChromaDB embeddings | ✅ `ContentBasedRecommender` using `all-MiniLM-L6-v2` + ChromaDB |
+| Collaborative filtering (user-user, item-item) | ✅ `CollaborativeRecommender` with synthetic user matrix |
+| Hybrid recommender | ✅ `HybridRecommender` — 60% content / 40% collaborative |
+| Evaluation metrics | ✅ Precision@K, Recall@K, NDCG@K, catalog coverage, diversity |
 
-1. **Content-Based Filtering**
-   - Implement course similarity based on embeddings
-   - Use ChromaDB vector search
-   - Recommend similar courses
-
-2. **Collaborative Filtering**
-   - Implement user-user similarity
-   - Implement item-item similarity
-   - Handle cold-start problem
-
-3. **Hybrid Recommender**
-   - Combine content-based and collaborative approaches
-   - Implement ranking algorithms
-
-4. **Evaluation Metrics**
-   - Precision, recall, F1 score
-   - NDCG (Normalized Discounted Cumulative Gain)
-   - Coverage and diversity metrics
+See [PHASE2_COMPLETE.md](PHASE2_COMPLETE.md) for full details.
 
 ## Quick Start Commands
 
@@ -193,9 +181,9 @@ print(results[['course_name', 'difficulty_level', 'similarity_score']])
 - [src/utils/database.py](src/utils/database.py:1) - Database management
 - [src/utils/embeddings.py](src/utils/embeddings.py:1) - Semantic search
 - [src/utils/data_cleaner.py](src/utils/data_cleaner.py:1) - Data cleaning
-- [src/utils/data_loader.py](src/utils/data_loader.py:1) - Data loading
 - [src/utils/api_config.py](src/utils/api_config.py:1) - API configuration
-- [src/utils/api_collector.py](src/utils/api_collector.py:1) - API collection
+- ~~`src/utils/data_loader.py`~~ — consolidated into `data_cleaner.py` (Phase 7 cleanup)
+- ~~`src/utils/api_collector.py`~~ — consolidated into `api_config.py` (Phase 7 cleanup)
 - [src/utils/load_data_to_db.py](src/utils/load_data_to_db.py:1) - DB loader
 
 **Data:**
@@ -218,13 +206,8 @@ print(results[['course_name', 'difficulty_level', 'similarity_score']])
 - ChromaDB: https://docs.trychroma.com/
 - SQLAlchemy: https://docs.sqlalchemy.org/
 
-**Next Steps:**
-- Start implementing recommendation algorithms
-- Read about collaborative filtering techniques
-- Explore LangChain agents for Phase 3
-
 ---
 
 **Status**: Phase 1 Complete ✅
-**Next Phase**: Phase 2 - Basic Recommender
+**Next Phase**: Phase 2 Complete — see [PHASE2_COMPLETE.md](PHASE2_COMPLETE.md)
 **Updated**: February 10, 2026

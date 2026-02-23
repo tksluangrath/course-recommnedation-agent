@@ -297,5 +297,5 @@ None — the entire web UI is built on top of the existing backend without touch
 ---
 
 **Status**: Phase 6 Complete
-**Next**: Project feature-complete across all 6 phases
+**Next Phase**: Phase 7 Complete — see [PHASE7_COMPLETE.md](PHASE7_COMPLETE.md)
 **Updated**: February 22, 2026

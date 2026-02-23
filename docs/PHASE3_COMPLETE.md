@@ -115,17 +115,19 @@ print(agent.chat('Recommend courses for learning web development'))
 1. **PyTorch DLL Loading** (Windows + Python 3.13) — when running scripts directly, `import torch` must come before sentence-transformers imports. The CLI chat handles this automatically.
 2. **First query latency** — the first query takes longer as it initializes the embedding model, ChromaDB, and synthetic user data. Subsequent queries are fast.
 
-## What's Next (Phase 4)
+## Phase 4 Delivered
 
-Phase 4 focuses on **Learning Path Logic**:
+| Planned | Delivered |
+|---|---|
+| Prerequisite chains | ✅ 3,682 prerequisite relationships seeded heuristically; `get_prerequisite_path` tool |
+| Deeper skill gap analysis | ✅ Foundational-first ordering of missing skills |
+| Optimal course ordering | ✅ Topological sort via NetworkX DAG within each difficulty tier |
+| Timeline estimation | ✅ Week-by-week schedule based on hrs/week; `estimate_learning_timeline` tool |
 
-1. **Prerequisite chains** — model course dependencies
-2. **Skill gap analysis** — deeper analysis with course sequencing
-3. **Path generation** — optimal course ordering based on prerequisites
-4. **Timeline estimation** — estimate completion time based on course hours
+See [PHASE4_COMPLETE.md](PHASE4_COMPLETE.md) for full details.
 
 ---
 
 **Status**: Phase 3 Complete
-**Next Phase**: Phase 4 - Learning Path Logic
+**Next Phase**: Phase 4 Complete — see [PHASE4_COMPLETE.md](PHASE4_COMPLETE.md)
 **Updated**: February 17, 2026

@@ -169,9 +169,15 @@ Added module-level `_active_profile` global and `set_active_profile(profile)` fu
 
 ## Phase 5 Stats
 
-- **1 new module** created (`profile_manager.py`)
+- **1 new module** created (`profile_manager.py`) — later consolidated into `database.py` during file cleanup
 - **1 new database table** (`user_profiles`)
 - **3 new profile CRUD methods** on `DatabaseManager`
 - **5 new CLI commands** (`/profile`, `/skills`, `/goal`, `/hours`, improved `/quit`)
 - **Product-type-aware timeline** replaces flat 20h default across all paths
 - **Zero breaking changes** — all existing tool signatures and agent API preserved
+
+---
+
+**Status**: Phase 5 Complete
+**Next Phase**: Phase 6 Complete — see [PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)
+**Updated**: February 2026

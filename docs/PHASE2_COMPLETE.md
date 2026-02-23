@@ -115,17 +115,19 @@ Live API collector using OAuth2 client credentials to fetch courses directly fro
 
 1. **PyTorch DLL Loading** (Windows + Python 3.13) - Scripts that import sentence-transformers need `import torch` as the first import, or run via `python -c "import torch; ..."`. This is a known PyTorch 2.10 issue on Windows.
 
-## What's Next (Phase 3)
+## Phase 3 Delivered
 
-Phase 3 focuses on building the **AI Agent** using LangChain + Ollama:
+| Planned | Delivered |
+|---|---|
+| ReAct-style agent with tool use | ✅ LangChain `create_react_agent` with 7 tools |
+| Search, recommend, skill gap, learning path tools | ✅ All implemented in `recommender_tools.py` |
+| Conversation memory | ✅ `ConversationBufferWindowMemory` (last 10 exchanges) |
+| Natural language interaction | ✅ CLI chat via `chat_cli.py` |
 
-1. **Agent Architecture** - ReAct-style agent with tool use
-2. **Tool Implementations** - Search courses, recommend, build learning paths, skill gap analysis
-3. **Memory System** - Conversation history and user preferences
-4. **Basic Conversations** - Natural language interaction for course recommendations
+See [PHASE3_COMPLETE.md](PHASE3_COMPLETE.md) for full details.
 
 ---
 
 **Status**: Phase 2 Complete
-**Next Phase**: Phase 3 - AI Agent with LangChain
+**Next Phase**: Phase 3 Complete — see [PHASE3_COMPLETE.md](PHASE3_COMPLETE.md)
 **Updated**: February 17, 2026
