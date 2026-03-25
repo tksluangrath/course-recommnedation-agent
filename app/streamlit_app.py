@@ -34,7 +34,7 @@ def _apply_theme() -> None:
         """
         <style>
         /* ── Google Font ─────────────────────────────────────────────── */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
         /* ── Hide Streamlit chrome ───────────────────────────────────── */
         #MainMenu            { visibility: hidden; }
@@ -49,12 +49,12 @@ def _apply_theme() -> None:
 
         /* ── App background ──────────────────────────────────────────── */
         .stApp {
-            background-color: #0e1117;
+            background-color: #080c12;
         }
 
         /* ── Main content column ─────────────────────────────────────── */
         .main .block-container {
-            padding-top: 2rem;
+            padding-top: 1.5rem;
             padding-left: 2rem;
             padding-right: 2rem;
             max-width: 900px;
@@ -62,8 +62,8 @@ def _apply_theme() -> None:
 
         /* ── Sidebar ─────────────────────────────────────────────────── */
         section[data-testid="stSidebar"] {
-            background-color: #141920;
-            border-right: 1px solid #1e2530;
+            background-color: #0d1117;
+            border-right: 1px solid #1a2236;
         }
         section[data-testid="stSidebar"] h1,
         section[data-testid="stSidebar"] h2,
@@ -74,39 +74,61 @@ def _apply_theme() -> None:
         /* ── Primary buttons ─────────────────────────────────────────── */
         .stButton > button[kind="primary"],
         .stButton > button[data-testid*="primary"] {
-            background: linear-gradient(135deg, #00bfa5, #0097a7);
+            background: linear-gradient(135deg, #00c9a7, #0097a7);
             color: #fff;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-weight: 600;
+            font-size: 0.9rem;
             letter-spacing: 0.3px;
-            transition: opacity 0.2s ease;
+            padding: 0.55rem 1.25rem;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 12px rgba(0,201,167,0.25);
         }
         .stButton > button[kind="primary"]:hover {
-            opacity: 0.88;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(0,201,167,0.35);
         }
 
         /* ── Secondary buttons ───────────────────────────────────────── */
         .stButton > button {
-            border-radius: 8px;
-            border: 1px solid #2a3445;
-            background-color: #1a2233;
-            color: #c9d6e8;
-            transition: border-color 0.2s ease;
+            border-radius: 10px;
+            border: 1px solid #1e2d42;
+            background-color: #111827;
+            color: #b0c4de;
+            font-size: 0.875rem;
+            transition: all 0.15s ease;
         }
         .stButton > button:hover {
             border-color: #00bfa5;
-            color: #00bfa5;
+            color: #00e5cc;
+            background-color: rgba(0,191,165,0.06);
         }
 
         /* ── Chat messages ───────────────────────────────────────────── */
         .stChatMessage {
-            border-radius: 12px;
-            padding: 4px 0;
+            border-radius: 14px;
+            padding: 6px 0;
+        }
+        /* User message bubble */
+        [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+            background: linear-gradient(135deg, rgba(0,191,165,0.08), rgba(0,151,167,0.06));
+            border: 1px solid rgba(0,191,165,0.12);
+            border-radius: 14px;
+            padding: 0.25rem 0.5rem;
+            margin: 0.25rem 0;
+        }
+        /* Assistant message bubble */
+        [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 14px;
+            padding: 0.25rem 0.5rem;
+            margin: 0.25rem 0;
         }
         [data-testid="stChatMessageContent"] p {
-            line-height: 1.7;
-            color: #d4dcea;
+            line-height: 1.75;
+            color: #cdd9ea;
         }
 
         /* ── Chat input ──────────────────────────────────────────────── */
@@ -114,31 +136,33 @@ def _apply_theme() -> None:
         .stChatInputContainer > div,
         [data-testid="stChatInput"],
         [data-testid="stChatInput"] > div {
-            background-color: #0e1117 !important;
+            background-color: #080c12 !important;
         }
         .stChatInputContainer textarea,
         [data-testid="stChatInput"] textarea {
-            background-color: #161d27 !important;
-            border: 1px solid #2a3445 !important;
-            border-radius: 12px !important;
+            background-color: #0f1823 !important;
+            border: 1px solid #1e2d42 !important;
+            border-radius: 14px !important;
             color: #d4dcea !important;
             font-family: 'Inter', sans-serif !important;
+            font-size: 0.9rem !important;
+            padding: 0.75rem 1rem !important;
         }
         .stChatInputContainer textarea:focus,
         [data-testid="stChatInput"] textarea:focus {
             border-color: #00bfa5 !important;
-            box-shadow: 0 0 0 2px rgba(0,191,165,0.18) !important;
+            box-shadow: 0 0 0 3px rgba(0,191,165,0.12) !important;
         }
         .stChatInputContainer textarea::placeholder,
         [data-testid="stChatInput"] textarea::placeholder {
-            color: #4a5568 !important;
+            color: #3d5066 !important;
         }
 
         /* ── Text inputs + labels ─────────────────────────────────────── */
         .stTextInput input, .stNumberInput input {
-            background-color: #161d27 !important;
-            border: 1px solid #2a3445 !important;
-            border-radius: 8px !important;
+            background-color: #0f1823 !important;
+            border: 1px solid #1e2d42 !important;
+            border-radius: 10px !important;
             color: #d4dcea !important;
             font-family: 'Inter', sans-serif !important;
         }
@@ -147,79 +171,246 @@ def _apply_theme() -> None:
             box-shadow: 0 0 0 2px rgba(0,191,165,0.15) !important;
         }
         .stTextInput input::placeholder, .stNumberInput input::placeholder {
-            color: #4a5568 !important;
+            color: #3d5066 !important;
         }
-        /* Widget labels (form field labels in sidebar) */
+        /* Widget labels */
         [data-testid="stWidgetLabel"] p,
         .stTextInput label, .stNumberInput label,
         .stSlider label, .stMultiSelect label {
-            color: #8fa3bc !important;
-            font-size: 0.82rem !important;
+            color: #6e8aaa !important;
+            font-size: 0.8rem !important;
+            font-weight: 500 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.4px !important;
         }
         /* General paragraph text in sidebar */
         section[data-testid="stSidebar"] p {
-            color: #9eb3cc;
+            color: #8fa8c0;
         }
 
         /* ── Metric cards ────────────────────────────────────────────── */
+        [data-testid="stMetric"] {
+            background: rgba(0,191,165,0.05);
+            border: 1px solid rgba(0,191,165,0.1);
+            border-radius: 10px;
+            padding: 0.5rem 0.75rem;
+        }
         [data-testid="stMetricValue"] {
-            font-size: 1.4rem;
+            font-size: 1.5rem;
             font-weight: 700;
             color: #00e5cc;
         }
         [data-testid="stMetricLabel"] {
-            font-size: 0.75rem;
-            color: #7b8fa8;
+            font-size: 0.72rem;
+            color: #5c7a94;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.6px;
         }
 
         /* ── Expanders ───────────────────────────────────────────────── */
+        details {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid #1a2638 !important;
+            border-radius: 10px !important;
+            margin-bottom: 0.4rem;
+        }
         details summary {
-            color: #9eb3cc;
-            font-size: 0.88rem;
+            color: #8fa8c0;
+            font-size: 0.875rem;
             font-weight: 500;
+            padding: 0.25rem 0.1rem;
         }
         details[open] summary {
-            color: #00bfa5;
+            color: #00c9a7;
         }
 
         /* ── Dividers ────────────────────────────────────────────────── */
         hr {
-            border-color: #1e2a3a;
+            border-color: #131e2e;
         }
 
         /* ── Captions / small text ───────────────────────────────────── */
         .stCaption, small {
-            color: #5c7288 !important;
+            color: #4a6278 !important;
         }
 
-        /* ── Login card ──────────────────────────────────────────────── */
+        /* ── Login screen ────────────────────────────────────────────── */
+        .login-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+            padding: 2rem 0;
+        }
+        .login-logo {
+            width: 64px;
+            height: 64px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, #00c9a7 0%, #0076a8 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 8px 30px rgba(0,201,167,0.3);
+        }
         .login-card {
-            background: #141920;
-            border: 1px solid #1e2a3a;
-            border-radius: 16px;
-            padding: 2.5rem 2rem 2rem;
-            margin-top: 4rem;
-            box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+            background: linear-gradient(160deg, #0f1823 0%, #0b1219 100%);
+            border: 1px solid #1a2638;
+            border-radius: 20px;
+            padding: 2.75rem 2.5rem 2.25rem;
+            margin-top: 2rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,191,165,0.05);
+            text-align: center;
         }
         .login-title {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #e8f0fe;
-            margin-bottom: 0.25rem;
+            font-size: 2.1rem;
+            font-weight: 800;
+            color: #eaf0fb;
+            margin-bottom: 0.35rem;
+            letter-spacing: -0.5px;
         }
         .login-sub {
-            font-size: 0.875rem;
-            color: #5c7288;
-            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+            color: #4a6278;
+            margin-bottom: 0;
+            line-height: 1.5;
         }
-        .accent { color: #00bfa5; }
+        .login-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #1a2638, transparent);
+            margin: 1.5rem 0;
+        }
+        .accent { color: #00c9a7; }
+
+        /* ── Welcome / empty state ───────────────────────────────────── */
+        .welcome-hero {
+            text-align: center;
+            padding: 3rem 1rem 2rem;
+        }
+        .welcome-icon {
+            width: 72px;
+            height: 72px;
+            border-radius: 20px;
+            background: linear-gradient(135deg, #00c9a7, #0076a8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.25rem;
+            margin: 0 auto 1.25rem;
+            box-shadow: 0 8px 32px rgba(0,201,167,0.25);
+        }
+        .welcome-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #eaf0fb;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.3px;
+        }
+        .welcome-sub {
+            font-size: 0.95rem;
+            color: #4a6278;
+            max-width: 480px;
+            margin: 0 auto 2.5rem;
+            line-height: 1.6;
+        }
+        .prompt-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            max-width: 620px;
+            margin: 0 auto;
+        }
+        .prompt-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid #1a2638;
+            border-radius: 12px;
+            padding: 1rem 1.1rem;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .prompt-card:hover {
+            border-color: rgba(0,191,165,0.35);
+            background: rgba(0,191,165,0.05);
+            transform: translateY(-1px);
+        }
+        .prompt-card-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #00bfa5;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.3rem;
+        }
+        .prompt-card-text {
+            font-size: 0.875rem;
+            color: #8fa8c0;
+            line-height: 1.4;
+        }
+
+        /* ── Chat panel header ───────────────────────────────────────── */
+        .chat-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.25rem 0 1.25rem;
+            border-bottom: 1px solid #131e2e;
+            margin-bottom: 1rem;
+        }
+        .chat-header-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #00c9a7, #0076a8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        .chat-header-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #eaf0fb;
+            margin: 0;
+        }
+        .chat-header-sub {
+            font-size: 0.78rem;
+            color: #4a6278;
+            margin: 0;
+        }
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #00c9a7;
+            display: inline-block;
+            margin-right: 4px;
+            box-shadow: 0 0 6px rgba(0,201,167,0.7);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ── Sidebar section headers ─────────────────────────────────── */
+        .sidebar-section-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            color: #3d5470;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 0.75rem 0 0.4rem;
+        }
 
         /* ── Dataframe / table ───────────────────────────────────────── */
         [data-testid="stDataFrame"] {
-            border-radius: 8px;
+            border-radius: 10px;
             overflow: hidden;
+            border: 1px solid #1a2638;
         }
 
         /* ── Spinner ─────────────────────────────────────────────────── */
@@ -227,20 +418,34 @@ def _apply_theme() -> None:
             border-top-color: #00bfa5 !important;
         }
 
-        /* ── Sticky chat input bar (bottom white strip) ──────────────── */
+        /* ── Sticky chat input bar ───────────────────────────────────── */
         [data-testid="stBottom"] {
-            background-color: #0e1117;
-            border-top: 1px solid #1e2a3a;
+            background-color: #080c12;
+            border-top: 1px solid #131e2e;
         }
         [data-testid="stBottom"] > div {
-            background-color: #0e1117;
+            background-color: #080c12;
         }
 
         /* ── Scrollbar ───────────────────────────────────────────────── */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0e1117; }
-        ::-webkit-scrollbar-thumb { background: #2a3a50; border-radius: 3px; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #1e2d42; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #00bfa5; }
+
+        /* ── Multiselect tags ────────────────────────────────────────── */
+        [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+            background-color: rgba(0,191,165,0.15) !important;
+            border: 1px solid rgba(0,191,165,0.25) !important;
+            color: #00c9a7 !important;
+            border-radius: 6px !important;
+        }
+
+        /* ── Slider ──────────────────────────────────────────────────── */
+        [data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"] {
+            background-color: #00c9a7 !important;
+            border-color: #00c9a7 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -323,30 +528,41 @@ def render_login_screen() -> str | None:
     Show a centered login card. Returns the entered username on submit,
     None if the user hasn't submitted yet.
     """
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1, 1.6, 1])
     with col2:
         st.markdown(
             """
+            <div style="text-align:center;padding-top:3rem;">
+                <div class="login-logo">🎓</div>
+            </div>
             <div class="login-card">
                 <div class="login-title">Course <span class="accent">Advisor</span></div>
-                <div class="login-sub">AI-powered learning path planner &mdash; Coursera × LLM</div>
+                <div class="login-sub">
+                    AI-powered learning path planner<br>
+                    built on Coursera &amp; LLMs
+                </div>
+                <div class="login-divider"></div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
         username = st.text_input(
             "Username",
             key="login_input",
-            placeholder="e.g. alice",
+            placeholder="Enter your username to get started",
             label_visibility="collapsed",
         )
-        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
         if st.button("Start Learning →", type="primary", use_container_width=True):
             name = username.strip()
             if name:
                 return name
             st.warning("Please enter a username.")
+        st.markdown(
+            "<p style='text-align:center;font-size:0.75rem;color:#2e4055;margin-top:1rem'>"
+            "No account needed — just pick a username</p>",
+            unsafe_allow_html=True,
+        )
     return None
 
 
@@ -357,6 +573,8 @@ def render_login_screen() -> str | None:
 def _render_profile_cards(agent: CourseAdvisorAgent) -> None:
     """Display current profile: skill tags, goal, and metric cards."""
     profile = agent.get_profile()
+
+    st.markdown("<div class='sidebar-section-label'>Profile</div>", unsafe_allow_html=True)
 
     skills = profile.get("known_skills", [])
     if skills:
@@ -445,7 +663,6 @@ def _render_quick_actions() -> None:
     Sidebar quick-action forms. Each form constructs a natural-language
     message and injects it into the chat so the agent processes it normally.
     """
-    st.subheader("Quick Actions")
 
     with st.expander("Build Learning Path"):
         qa_goal = st.text_input(
@@ -573,27 +790,31 @@ def render_sidebar(agent: CourseAdvisorAgent) -> None:
         initials = uid[:2].upper()
         st.markdown(
             f"""
-            <div style="display:flex;align-items:center;gap:0.75rem;padding:0.25rem 0 0.75rem;">
-                <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#00bfa5,#0097a7);
+            <div style="display:flex;align-items:center;gap:0.85rem;padding:0.5rem 0 1rem;">
+                <div style="width:42px;height:42px;border-radius:12px;
+                            background:linear-gradient(135deg,#00c9a7,#0076a8);
                             display:flex;align-items:center;justify-content:center;
-                            font-weight:700;font-size:0.9rem;color:#fff;flex-shrink:0;">{initials}</div>
+                            font-weight:700;font-size:0.95rem;color:#fff;flex-shrink:0;
+                            box-shadow:0 4px 14px rgba(0,201,167,0.3);">{initials}</div>
                 <div>
-                    <div style="font-weight:600;color:#e0e6ef;line-height:1.2">{uid}</div>
-                    <div style="font-size:0.73rem;color:#5c7288">Learning Profile</div>
+                    <div style="font-weight:600;color:#e8f0fe;line-height:1.2;font-size:0.95rem">{uid}</div>
+                    <div style="font-size:0.72rem;color:#3d5470;margin-top:1px">
+                        <span class="status-dot"></span>Active learner
+                    </div>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
         _render_profile_cards(agent)
-        st.divider()
+        st.markdown("<div class='sidebar-section-label'>Edit Profile</div>", unsafe_allow_html=True)
         _render_edit_forms(agent)
-        st.divider()
+        st.markdown("<div class='sidebar-section-label'>Quick Actions</div>", unsafe_allow_html=True)
         _render_quick_actions()
-        st.divider()
+        st.markdown("<div class='sidebar-section-label'>Course Catalog</div>", unsafe_allow_html=True)
         _render_course_explorer()
         st.divider()
-        if st.button("🔄 Reset Chat", key="btn_reset"):
+        if st.button("↺  Reset Chat", key="btn_reset"):
             agent.reset()
             st.session_state["messages"] = []
             st.rerun()
@@ -680,8 +901,8 @@ def _render_timeline_chart(rows: list) -> None:
         showlegend=False,
         height=280,
         margin=dict(l=10, r=10, t=40, b=30),
-        paper_bgcolor="#141920",
-        plot_bgcolor="#141920",
+        paper_bgcolor="#080c12",
+        plot_bgcolor="#080c12",
         font=dict(color="#9eb3cc"),
         xaxis=dict(gridcolor="#1e2a3a", zerolinecolor="#1e2a3a"),
     )
@@ -719,10 +940,10 @@ def _render_skill_gap_chart(completion: float) -> None:
         showlegend=True,
         height=280,
         margin=dict(l=10, r=10, t=40, b=10),
-        paper_bgcolor="#141920",
-        plot_bgcolor="#141920",
+        paper_bgcolor="#080c12",
+        plot_bgcolor="#080c12",
         font=dict(color="#9eb3cc"),
-        legend=dict(bgcolor="#141920", bordercolor="#1e2a3a"),
+        legend=dict(bgcolor="#080c12", bordercolor="#1a2638"),
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -781,14 +1002,70 @@ def _render_chat_input() -> None:
         st.rerun()
 
 
-def render_chat_panel(agent: CourseAdvisorAgent) -> None:
-    """Main panel: chat history, pending message processing, and chat input."""
+_STARTER_PROMPTS = [
+    ("Learning Path", "Recommend courses", "Build me a learning path to become a data scientist with 10 hrs/week"),
+    ("Skill Gap", "Find what's missing", "Analyze my skill gap for becoming a machine learning engineer"),
+    ("Top Picks", "Discover courses", "What are the highest-rated beginner-friendly Python courses?"),
+    ("Career Move", "Plan your pivot", "I want to transition from marketing to product management — what should I study?"),
+]
+
+
+def _render_empty_state() -> None:
+    """Welcome hero + suggested prompt cards shown when no messages exist."""
     st.markdown(
-        "<h2 style='font-weight:700;color:#e8f0fe;margin-bottom:0.25rem'>Chat with Your "
-        "<span style='color:#00bfa5'>Advisor</span></h2>",
+        """
+        <div class="welcome-hero">
+            <div class="welcome-icon">🎓</div>
+            <div class="welcome-title">Your AI Course Advisor</div>
+            <div class="welcome-sub">
+                Ask me anything about learning paths, skill gaps, or course recommendations.
+                I'll help you build a personalized curriculum from thousands of Coursera courses.
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
-    _render_message_history()
+
+    cols = st.columns(2)
+    for i, (label, title, prompt) in enumerate(_STARTER_PROMPTS):
+        with cols[i % 2]:
+            if st.button(
+                f"**{title}**\n\n{prompt[:60]}{'…' if len(prompt) > 60 else ''}",
+                key=f"starter_{i}",
+                use_container_width=True,
+            ):
+                st.session_state["messages"].append({
+                    "role": "user",
+                    "content": prompt,
+                    "chart_data": None,
+                })
+                st.rerun()
+
+    st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+
+
+def render_chat_panel(agent: CourseAdvisorAgent) -> None:
+    """Main panel: header, empty state or chat history, and chat input."""
+    st.markdown(
+        """
+        <div class="chat-header">
+            <div class="chat-header-icon">🤖</div>
+            <div>
+                <div class="chat-header-title">Course Advisor</div>
+                <div class="chat-header-sub">
+                    <span class="status-dot"></span>AI-powered &mdash; Coursera × LLM
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if not st.session_state["messages"]:
+        _render_empty_state()
+    else:
+        _render_message_history()
+
     _process_pending_message(agent)
     _render_chat_input()
 

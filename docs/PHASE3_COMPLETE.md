@@ -1,133 +1,77 @@
-# Phase 3 AI Agent - COMPLETE
+# Phase 3 — AI Agent ✅
 
-## Summary
+Phase 3 is where the project stopped being a recommendation library and became something you could actually talk to. A conversational AI agent was built using LangChain v1.2 + Ollama (Llama 3.1), wrapping all the Phase 2 recommendation engines as tools the agent can call on its own.
 
-Phase 3 (AI Agent) has been successfully completed. A conversational course advisor agent was built using LangChain v1.2 + Ollama (llama3.1), with 7 tools wrapping the recommendation engines from Phase 2. The agent can search courses, build learning paths, analyze skill gaps, and maintain conversation history.
+## How it works
 
-## What Was Accomplished
+The agent is a tool-calling LLM. You send it a natural language message, it decides which tools to use (if any), calls them in sequence, reads the results, and writes back a helpful response. You never have to think about which function to call — that's the whole point.
 
-### 1. LLM ChatModel Support
+LangChain's `create_agent` API handles the reasoning loop. The LLM is `ChatOllama` (needed for tool-calling support, as opposed to the plain `Ollama` completion model used in Phase 1). Each tool is a `@tool`-decorated Python function with a clear docstring so the LLM understands when to use it.
 
-**File:** [src/utils/llm_config.py](src/utils/llm_config.py)
+## The 7 tools
 
-Added `get_chat_llm()` method to `LLMConfig` that returns a ChatModel instance (required for LangChain tool calling):
+All tools live in `src/tools/recommender_tools.py` and call into the Phase 2 recommenders:
 
-- `ChatOllama` from `langchain-ollama` for local Ollama inference
-- `ChatAnthropic` for Claude API (already supported)
-- Backward compatible — existing `get_llm()` still works for non-agent use cases
-
-### 2. Agent Tools
-
-**File:** [src/tools/recommender_tools.py](src/tools/recommender_tools.py)
-
-Seven LangChain `@tool` decorated functions that wrap the Phase 2 recommender methods. Each tool accepts string inputs, calls the appropriate backend, and returns formatted text for the LLM.
-
-| Tool | Description | Backend Method |
+| Tool | What you'd say to trigger it | Backend |
 |---|---|---|
-| `search_courses` | Natural language course search | `HybridRecommender.recommend()` |
-| `find_similar_courses` | Find courses similar to a given one | `ContentBasedRecommender.recommend_similar()` |
-| `recommend_by_skills` | Recommend by target skills | `ContentBasedRecommender.recommend_by_skills()` |
-| `create_learning_path` | Beginner-to-advanced learning plan | `HybridRecommender.recommend_learning_path()` |
-| `analyze_skill_gap` | Gap analysis between current and goal skills | `ContentBasedRecommender.get_skill_gap()` |
-| `get_course_info` | Detailed info about a specific course | `DatabaseManager.search_courses()` |
-| `get_popular_skills` | Trending skills by category | `ContentBasedRecommender.get_popular_skills()` |
+| `search_courses` | "Find me courses about data visualization" | `HybridRecommender.recommend()` |
+| `find_similar_courses` | "What's similar to this course?" | `ContentBasedRecommender.recommend_similar()` |
+| `recommend_by_skills` | "I want to learn pandas, dask, and SQL" | `ContentBasedRecommender.recommend_by_skills()` |
+| `create_learning_path` | "Build me a learning path for becoming a data scientist" | `HybridRecommender.recommend_learning_path()` |
+| `analyze_skill_gap` | "What do I need to learn to become a ML engineer?" | `ContentBasedRecommender.get_skill_gap()` |
+| `get_course_info` | "Tell me about the Google Data Analytics course" | `DatabaseManager.search_courses()` |
+| `get_popular_skills` | "What skills are trending in data science?" | `ContentBasedRecommender.get_popular_skills()` |
 
-### 3. Course Advisor Agent
+Each tool formats its output as readable text so the LLM can incorporate it naturally into its response without extra parsing.
 
-**File:** [src/agents/course_advisor.py](src/agents/course_advisor.py)
+## The agent class
 
-`CourseAdvisorAgent` class using LangChain v1.2 `create_agent` API:
+`CourseAdvisorAgent` in `src/agents/course_advisor.py`:
+- Takes a `user_id` and loads that user's profile on startup (this became important in Phase 5)
+- Holds per-session conversation history (last 10 exchanges) — the LLM has context for follow-ups
+- Has a system prompt that sets the "learning advisor" persona: explain recommendations, ask clarifying questions, tailor advice to skill level
+- Handles errors gracefully — if a tool call fails, it returns a readable message instead of crashing
+- Multiple sessions can run concurrently (each has its own history)
 
-- **LLM:** ChatOllama (llama3.1) or ChatAnthropic (Claude)
-- **Architecture:** Tool-calling agent with automatic tool selection
-- **System prompt:** Learning advisor persona that explains recommendations, asks clarifying questions, and considers user skill level
-- **Memory:** Per-session conversation history (last 10 exchanges), supports multiple concurrent sessions
-- **Error handling:** Graceful error recovery with user-friendly messages
+## The CLI
 
-Key methods:
-- `chat(message, session_id)` — send message, get response
-- `reset(session_id)` — clear conversation history
-- `get_history(session_id)` — retrieve past messages
-
-### 4. CLI Chat Interface
-
-**File:** [src/agents/chat_cli.py](src/agents/chat_cli.py)
-
-Terminal-based chat loop for interactive testing:
-
-- Welcome message with capability overview
-- `/quit` — exit the chat
-- `/reset` — clear conversation history
-- `/history` — show past messages
-- Ctrl+C handling for clean exit
-
-## Test Results
-
-**Test 1: Popular Skills Query**
-- Input: "What are the top 5 popular skills in Data Science?"
-- Agent called `get_popular_skills` tool with category="Data Science"
-- Returned: data analysis (371), machine learning (233), data manipulation (186), applied machine learning (174), data visualization software (168)
-- Agent provided explanations for why each skill matters
-
-**Test 2: Learning Path Creation**
-- Input: "Create a learning path for becoming a data scientist. I already know Python and SQL."
-- Agent called `create_learning_path` tool with goal and current skills
-- Returned structured path:
-  - Beginner: Applied Data Science (IBM), Data Science Fundamentals (UC Irvine), Data Literacy (Johns Hopkins)
-  - Intermediate: Data Science at Scale (UW), Data Structures and Algorithms (UCSD), Applied Data Science with Python (Michigan)
-  - Advanced: Google Business Intelligence, Data Warehousing (Colorado), Google Advanced Data Analytics
-
-## Files Created
-
-- [src/tools/recommender_tools.py](src/tools/recommender_tools.py) - 7 LangChain tools wrapping recommender methods
-- [src/agents/course_advisor.py](src/agents/course_advisor.py) - CourseAdvisorAgent with conversation memory
-- [src/agents/chat_cli.py](src/agents/chat_cli.py) - Terminal chat interface
-
-## Files Modified
-
-- [src/utils/llm_config.py](src/utils/llm_config.py) - Added `get_chat_llm()` and `ChatOllama` support
-- [requirements.txt](requirements.txt) - Added `langchain-ollama>=0.1.0`
-- [src/tools/__init__.py](src/tools/__init__.py) - Added exports
-- [src/agents/__init__.py](src/agents/__init__.py) - Added exports
-
-## Quick Start
+`src/agents/chat_cli.py` is a terminal chat loop built for testing and actual use:
 
 ```bash
-# Start the chat interface
-python src/agents/chat_cli.py
-
-# Or test programmatically
-python -c "
-import torch
-import sys
-sys.path.insert(0, 'src/utils')
-sys.path.insert(0, 'src/recommender')
-sys.path.insert(0, 'src/tools')
-sys.path.insert(0, 'src/agents')
-from course_advisor import CourseAdvisorAgent
-agent = CourseAdvisorAgent()
-print(agent.chat('Recommend courses for learning web development'))
-"
+python src/agents/chat_cli.py --user alice
 ```
 
-## Known Issues
+Commands available mid-chat: `/quit`, `/reset`, `/history`. Ctrl+C exits cleanly.
 
-1. **PyTorch DLL Loading** (Windows + Python 3.13) — when running scripts directly, `import torch` must come before sentence-transformers imports. The CLI chat handles this automatically.
-2. **First query latency** — the first query takes longer as it initializes the embedding model, ChromaDB, and synthetic user data. Subsequent queries are fast.
+## What the agent actually said
 
-## Phase 4 Delivered
+**Test 1 — popular skills:**
+- Input: "What are the top 5 popular skills in Data Science?"
+- The agent called `get_popular_skills` with `category="Data Science"`, got back data analysis (371), machine learning (233), data manipulation (186), applied machine learning (174), data visualization software (168), and then explained *why* each of those matters for a data science career.
 
-| Planned | Delivered |
-|---|---|
-| Prerequisite chains | ✅ 3,682 prerequisite relationships seeded heuristically; `get_prerequisite_path` tool |
-| Deeper skill gap analysis | ✅ Foundational-first ordering of missing skills |
-| Optimal course ordering | ✅ Topological sort via NetworkX DAG within each difficulty tier |
-| Timeline estimation | ✅ Week-by-week schedule based on hrs/week; `estimate_learning_timeline` tool |
+**Test 2 — learning path:**
+- Input: "Create a learning path for becoming a data scientist. I already know Python and SQL."
+- The agent called `create_learning_path`, got back a structured three-level path, and presented it clearly with the reasoning behind the progression.
 
-See [PHASE4_COMPLETE.md](PHASE4_COMPLETE.md) for full details.
+The agent doesn't just dump the tool output — it adds context, which is the part that makes it actually useful.
+
+## Known issues at this point
+
+- **First query latency:** ~10–20 seconds the first time, while ChromaDB, the embedding model, and synthetic user data all initialize. Fast after that.
+- **PyTorch DLL (Windows + Python 3.13):** `import torch` must be the first import in any script that uses sentence-transformers. The CLI handles this automatically.
+
+## Files
+
+**Created:**
+- `src/tools/recommender_tools.py` — 7 LangChain tools
+- `src/agents/course_advisor.py` — `CourseAdvisorAgent`
+- `src/agents/chat_cli.py` — terminal chat interface
+
+**Modified:**
+- `src/utils/llm_config.py` — added `get_chat_llm()` returning a `ChatOllama` or `ChatAnthropic` instance (the plain completion model can't do tool calling)
+- `requirements.txt` — added `langchain-ollama>=0.1.0`
 
 ---
 
-**Status**: Phase 3 Complete
-**Next Phase**: Phase 4 Complete — see [PHASE4_COMPLETE.md](PHASE4_COMPLETE.md)
-**Updated**: February 17, 2026
+**Next:** [Phase 4 — Learning Path Logic](PHASE4_COMPLETE.md)
+*Updated: February 2026*

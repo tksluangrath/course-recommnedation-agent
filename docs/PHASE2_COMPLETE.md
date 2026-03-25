@@ -1,16 +1,12 @@
-# Phase 2 Recommendation Algorithms - COMPLETE
+# Phase 2 — Recommendation Algorithms ✅
 
-## Summary
+Phase 2 replaced the 20-course sample database with the real 2025 Coursera dataset and built three recommendation engines on top of it — content-based, collaborative, and a hybrid that blends both. It also added evaluation metrics to verify the recommendations were actually useful, not just technically functional.
 
-Phase 2 (Recommendation Algorithms) has been successfully completed. Four recommendation modules were built covering content-based filtering, collaborative filtering, hybrid blending, and evaluation metrics. The data pipeline was also updated to support the 2025 Coursera dataset.
+## The data problem
 
-## What Was Accomplished
+The first thing that needed fixing was the data pipeline. The original cleaner was written for the 2021 Coursera dataset, which has a completely different schema. The 2025 dataset ships with pre-extracted skills in a `Gained Skills` column but no course descriptions — which is actually fine, since we can synthesize descriptions from the title, category, and skills for embedding purposes.
 
-### 1. Data Pipeline Updated for 2025 Dataset
-
-The original pipeline expected the 2021 Coursera dataset columns. The 2025 dataset has a completely different schema:
-
-| 2025 Column | Maps To |
+| 2025 column | Internal name |
 |---|---|
 | `Title` | `course_name` |
 | `Institution` | `university` |
@@ -19,115 +15,67 @@ The original pipeline expected the 2021 Coursera dataset columns. The 2025 datas
 | `Subject` | `category` |
 | `Gained Skills` | `extracted_skills` |
 | `Duration` | `estimated_hours` |
-| `Reviews` | `num_reviews` |
 | `Learning Product` | `learning_product` |
 
-Key change: The 2025 dataset has no `course_description` field, but has rich `Gained Skills` data (pre-extracted, comma-separated). Synthetic descriptions are built from `title + category + skills` for embedding generation.
+After cleaning and deduplication: **2,759 courses, 1,754 skills, 38,204 skill-course links**.
 
-**Pipeline results:** 3,404 raw courses -> 2,759 unique courses, 1,754 skills, 38,204 skill-course links
+## The three recommenders
 
-### 2. Content-Based Recommender
+### Content-based (`src/recommender/content_based.py`)
 
-**File:** [src/recommender/content_based.py](src/recommender/content_based.py)
+The main workhorse. It uses the sentence-transformer embeddings from Phase 1 — each course is a vector, and recommendations are nearest neighbors in that space.
 
-Uses sentence-transformer embeddings stored in ChromaDB for semantic similarity search.
+Key methods:
+- `recommend_by_interests(query, n, difficulty)` — natural language → course list
+- `recommend_by_skills(target_skills, n, difficulty)` — find courses that teach specific skills, with fallback to semantic search when skill overlap is weak
+- `recommend_learning_path(goal, current_skills, n_per_level)` — returns three separate DataFrames: Beginner, Intermediate, Advanced
+- `get_skill_gap(goal_skills, current_skills)` — set difference between what you know and what you need
 
-- `recommend_similar(course_name, n)` - find courses similar to a given course
-- `recommend_by_interests(interests, n, difficulty)` - recommend based on natural language query
-- `recommend_by_skills(target_skills, n, difficulty)` - recommend based on skill overlap with fallback to semantic search
-- `recommend_learning_path(goal, current_skills, n_per_level)` - ordered Beginner/Intermediate/Advanced path
-- `get_skill_gap(goal_skills, current_skills)` - gap analysis between current and target skills
-- `get_popular_skills(category, top_n)` - most frequently taught skills
+### Collaborative filtering (`src/recommender/collaborative.py`)
 
-### 3. Collaborative Filtering Recommender
+There aren't real user interaction logs, so this uses synthetic users: `generate_synthetic_users()` creates users with category preferences and realistic rating distributions, then `recommend_user_user()` does weighted-average recommendations based on the top-20 most similar users.
 
-**File:** [src/recommender/collaborative.py](src/recommender/collaborative.py)
+The item-item side builds a cosine similarity matrix on the 2,759 × 1,754 course-skill matrix. Given a course, it finds the most skill-similar courses in the catalog.
 
-Item-item and user-user collaborative filtering using synthetic user interactions.
+### Hybrid (`src/recommender/hybrid.py`)
 
-- `build_skill_matrix()` - sparse course-skill matrix (2759 courses x 1754 skills)
-- `compute_item_similarity()` - cosine similarity on skill vectors
-- `recommend_item_item(course_name, n)` - find similar courses by shared skills
-- `generate_synthetic_users(n_users, seed)` - generate fake users with category preferences and realistic rating distributions
-- `build_user_item_matrix(interactions_df)` - pivot table for user-item ratings
-- `recommend_user_user(user_interactions, interactions_df, n)` - weighted average of top-20 similar users' ratings
+Blends the two at 60% content / 40% collaborative. A `_diversify()` step limits how many courses from the same category appear in a single recommendation list, so you're not handed five variations of the same course.
 
-### 4. Hybrid Recommender
+## Evaluation (`src/recommender/evaluator.py`)
 
-**File:** [src/recommender/hybrid.py](src/recommender/hybrid.py)
+Standard IR metrics:
+- `precision_at_k` — how many of the top-K results were actually relevant
+- `recall_at_k` — how many relevant items were found in the top-K
+- `ndcg_at_k` — like precision, but rewards finding things higher up the list
+- `catalog_coverage` — what fraction of the full catalog ever surfaces in recommendations
+- `diversity` — how spread across categories a recommendation list is
 
-Combines content-based and collaborative approaches with diversity controls.
+The `RecommenderEvaluator` class runs these across both content-based and collaborative systems in one shot with `run_full_evaluation()`.
 
-- `recommend(query, user_history, n, difficulty)` - weighted hybrid scoring (60% content, 40% collaborative)
-- `recommend_learning_path(goal, current_skills, user_history, n_per_level)` - personalized learning paths with collaborative boost
-- `_diversify(df, n, max_per_category)` - limits courses per category to avoid monotony
+## Test snapshots
 
-### 5. Evaluation Metrics
+Querying "machine learning" returned relevant ML/AI courses. "Web development with React" returned frontend courses. A learning path for "data science" produced plausible Beginner → Intermediate → Advanced sequences.
 
-**File:** [src/recommender/evaluator.py](src/recommender/evaluator.py)
+Top skills in the dataset: data analysis (446 courses), machine learning (310), Python (287), data science (241), SQL (198).
 
-Standard recommendation evaluation metrics.
+## Coursera API integration
 
-- `precision_at_k()` - fraction of top-K recommendations that are relevant
-- `recall_at_k()` - fraction of relevant items found in top-K
-- `ndcg_at_k()` - Normalized Discounted Cumulative Gain (rewards higher-ranked hits)
-- `catalog_coverage()` - fraction of catalog appearing in any recommendation
-- `diversity()` - intra-list diversity based on category spread
-- `RecommenderEvaluator` class with `evaluate_content_based()`, `evaluate_collaborative()`, `run_full_evaluation()`
+`src/utils/api_collectors.py` uses OAuth2 client credentials to pull live course data directly from Coursera's catalog API. The main value here is real course descriptions — the Kaggle dataset doesn't have them, but the API does. A `merge_with_kaggle()` method deduplicates by course name and combines both sources.
 
-## Test Results
+## Files
 
-**Content-Based** - "Machine Learning" query returned relevant ML/AI courses. "Web development with React" returned web development courses. Learning path for "data science" produced appropriate Beginner/Intermediate/Advanced courses.
+**Created:**
+- `src/recommender/content_based.py`
+- `src/recommender/collaborative.py`
+- `src/recommender/hybrid.py`
+- `src/recommender/evaluator.py`
 
-**Collaborative Filtering** - Item-item similarity matrix (2759x1754) built successfully. Courses similar to "Machine Learning" returned relevant results. User-user filtering with synthetic data science preferences returned data science recommendations.
-
-**Top Skills in Dataset:** data analysis (446 courses), machine learning (310), python (287), data science (241), SQL (198)
-
-## Files Modified
-
-- [src/utils/data_cleaner.py](src/utils/data_cleaner.py) - Rewritten for 2025 Coursera dataset column mapping
-- [src/utils/database.py](src/utils/database.py) - Added `num_reviews` and `learning_product` columns to Course model
-- [src/utils/load_data_to_db.py](src/utils/load_data_to_db.py) - Updated for new schema and column list
-
-## Files Created
-
-- [src/recommender/content_based.py](src/recommender/content_based.py) - Content-based recommendation engine
-- [src/recommender/collaborative.py](src/recommender/collaborative.py) - Collaborative filtering engine
-- [src/recommender/hybrid.py](src/recommender/hybrid.py) - Hybrid recommendation engine
-- [src/recommender/evaluator.py](src/recommender/evaluator.py) - Evaluation metrics
-- [src/utils/coursera_api.py](src/utils/coursera_api.py) - Coursera API collector with OAuth2
-
-### 6. Coursera API Integration
-
-**File:** [src/utils/coursera_api.py](src/utils/coursera_api.py)
-
-Live API collector using OAuth2 client credentials to fetch courses directly from Coursera's catalog API.
-
-- `authenticate()` - OAuth2 client credentials flow
-- `fetch_all_courses(max_courses)` - paginated course fetching
-- `fetch_partners()` - university/partner info
-- `fetch_and_save()` - fetch and save to CSV
-- `merge_with_kaggle()` - deduplicate and merge API data with Kaggle dataset
-
-**Data sources:** Courses can now come from both the Kaggle 2025 dataset (3,404 courses with skills) AND the live Coursera API (which provides real descriptions). The merger deduplicates by course name.
-
-## Known Issues
-
-1. **PyTorch DLL Loading** (Windows + Python 3.13) - Scripts that import sentence-transformers need `import torch` as the first import, or run via `python -c "import torch; ..."`. This is a known PyTorch 2.10 issue on Windows.
-
-## Phase 3 Delivered
-
-| Planned | Delivered |
-|---|---|
-| ReAct-style agent with tool use | ✅ LangChain `create_react_agent` with 7 tools |
-| Search, recommend, skill gap, learning path tools | ✅ All implemented in `recommender_tools.py` |
-| Conversation memory | ✅ `ConversationBufferWindowMemory` (last 10 exchanges) |
-| Natural language interaction | ✅ CLI chat via `chat_cli.py` |
-
-See [PHASE3_COMPLETE.md](PHASE3_COMPLETE.md) for full details.
+**Modified:**
+- `src/utils/data_cleaner.py` — rewritten for 2025 schema
+- `src/utils/database.py` — added `num_reviews` and `learning_product` columns
+- `src/utils/load_data_to_db.py` — updated for new column names
 
 ---
 
-**Status**: Phase 2 Complete
-**Next Phase**: Phase 3 Complete — see [PHASE3_COMPLETE.md](PHASE3_COMPLETE.md)
-**Updated**: February 17, 2026
+**Next:** [Phase 3 — AI Agent](PHASE3_COMPLETE.md)
+*Updated: February 2026*

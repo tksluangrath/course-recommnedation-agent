@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from database import DatabaseManager
-from collaborative import CollaborativeRecommender
+from hybrid import CollaborativeRecommender
 from content_based import ContentBasedRecommender
 
 

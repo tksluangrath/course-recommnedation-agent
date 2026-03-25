@@ -5,10 +5,13 @@ Handles SQLite database operations for storing course data,
 user interactions, and recommendations.
 """
 
+import ast
 import os
 import json
+import pandas as pd
 from typing import List, Optional, Dict
 from datetime import datetime
+from pathlib import Path
 from sqlalchemy import (
     create_engine,
     Column,
@@ -557,6 +560,66 @@ class DatabaseManager:
 
         finally:
             session.close()
+
+
+def load_courses_to_database(csv_path: str = "data/processed/cleaned_courses.csv"):
+    """Load courses from cleaned CSV into the SQLite database.
+
+    Wipes the existing database, reloads all courses, and re-links skills.
+    Run this after data_cleaner.py whenever the source data changes.
+    """
+    if not Path(csv_path).exists():
+        print(f"[ERROR] File not found: {csv_path}")
+        print("Run data_cleaner.py first to create the cleaned CSV.")
+        return
+
+    df = pd.read_csv(csv_path)
+    print(f"Loaded {len(df)} courses from {csv_path}")
+
+    db_path = Path("data/courses.db")
+    if db_path.exists():
+        db_path.unlink()
+        print("Removed old database")
+
+    db = DatabaseManager()
+
+    course_columns = [
+        'course_name', 'university', 'difficulty_level', 'course_rating',
+        'course_url', 'course_description', 'category', 'estimated_hours',
+        'num_reviews', 'learning_product',
+    ]
+    courses_data = []
+    for _, row in df.iterrows():
+        entry = {col: row[col] for col in course_columns if col in df.columns and pd.notna(row.get(col))}
+        entry.setdefault('difficulty_level', 'Mixed')
+        courses_data.append(entry)
+
+    db.add_courses_batch(courses_data)
+    print(f"Inserted {len(courses_data)} courses")
+
+    if 'extracted_skills' in df.columns:
+        skill_count = 0
+        for _, row in df.iterrows():
+            if pd.isna(row.get('extracted_skills')):
+                continue
+            courses = db.search_courses(query=row['course_name'], limit=1)
+            if not courses:
+                continue
+            raw = row['extracted_skills']
+            try:
+                skills = ast.literal_eval(raw) if isinstance(raw, str) else raw
+            except (ValueError, SyntaxError):
+                skills = [s.strip() for s in str(raw).split(',') if s.strip()]
+            for skill in skills:
+                try:
+                    db.link_course_skill(courses[0].id, str(skill).strip())
+                    skill_count += 1
+                except Exception:
+                    pass
+        print(f"Linked {skill_count} skills")
+
+    stats = db.get_stats()
+    print("Database stats:", stats)
 
 
 def test_database():

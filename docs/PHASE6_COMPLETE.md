@@ -1,301 +1,168 @@
-# Phase 6 Complete — Streamlit Web Interface
+# Phase 6 — Streamlit Web Interface ✅
 
-## Summary
+Phase 6 put a real UI on top of everything built in Phases 1–5. The entire CLI experience — chat, profile management, learning paths, skill gap analysis — is now in the browser. No backend changes were needed; the Streamlit app is purely a frontend layer that calls into the same `CourseAdvisorAgent` the CLI uses.
 
-Phase 6 built a full web UI on top of the Phases 1–5 backend — no backend changes required. The entire CLI experience (chat, profile management, learning paths, skill gap analysis) is now accessible through a browser with Plotly visualizations rendered automatically from the agent's text responses.
-
-**Run the app:**
 ```bash
 streamlit run app/streamlit_app.py
 ```
 
----
-
-## What Was Built
-
-### Layout
-
-Chat-first layout with a wide Streamlit page:
-
-- **Sidebar** — profile display, edit forms, quick action shortcuts, filterable course catalog
-- **Main panel** — chat history with inline charts, pinned chat input at the bottom
-
-### Login Screen
-
-Centered username input. On submit, `CourseAdvisorAgent(user_id=username)` loads the user's SQLite profile. New users get a blank profile; returning users see their skills, goal, and hours/week immediately.
-
-The page is login-gated via `st.stop()` — the sidebar and chat panel never render until a user_id is set.
+Open `http://localhost:8501`.
 
 ---
 
-### Sidebar Features
+## Layout
 
-#### Profile Cards
-Displays the current profile inline:
-- Skills rendered as inline code tags: `` `Python` · `SQL` · `Pandas` ``
-- Goal as plain text
-- `st.metric` tiles for Hours/Week and preferred difficulty level
+Wide Streamlit layout: sidebar on the left for profile and navigation, main panel on the right for the chat.
 
-#### Edit Forms (3 expanders)
+The page is login-gated — nothing renders until you enter a username. On submit, `CourseAdvisorAgent(user_id=username)` loads the SQLite profile. Returning users see their skills and goal immediately in the sidebar. New users start fresh.
 
-| Expander | What it does |
+---
+
+## Sidebar
+
+### Profile display
+
+Shows the current profile inline: skills as inline code tags (`` `Python` · `SQL` ``), goal as plain text, and two `st.metric` tiles for hours/week and preferred difficulty.
+
+### Edit forms
+
+Three expanders — **Add Skills**, **Set Goal**, **Set Hours/Week** — that call through to `agent.add_skills()` and `agent.update_profile()`. All changes persist to SQLite immediately. The profile cards refresh on the next rerun.
+
+### Quick actions
+
+Rather than building a separate form-to-agent bridge, quick actions just construct a natural-language message and inject it into the chat as a user bubble. The agent handles it through the normal tool-calling flow, conversation history stays coherent, and all 9 tools remain available.
+
+| Quick action | What gets sent to the agent |
 |---|---|
-| **Add Skills** | Comma-separated text input → `agent.add_skills()` → profile refreshes |
-| **Set Goal** | Text input → `agent.update_profile(goals=...)` → profile refreshes |
-| **Set Hours/Week** | Number input (1–80, step 0.5) → `agent.update_profile(hours_per_week=...)` |
+| Build Learning Path | `"Create a learning path for my goal: '{goal}' with {N} hours per week."` |
+| Skill Gap Analysis | `"Analyze my skill gap for becoming a {target}. My current skills are: {skills}."` |
 
-All edits persist to SQLite immediately. Profile cards update on the next rerun.
+### Course catalog explorer
 
-#### Quick Actions (2 expanders)
+A filterable view of all 2,759 courses loaded from the cleaned CSV via `@st.cache_data` — loaded once per process, never per rerun. Filters: category, difficulty, minimum rating. Displays course name, university, level, rating, category, and estimated hours.
 
-Rather than bypassing the agent, quick actions construct a natural-language message and inject it into the chat — keeping conversation history coherent and letting the agent use all its tools normally.
+### Reset Chat
 
-| Quick Action | Constructed message |
-|---|---|
-| **Build Learning Path** | `"Create a learning path for my goal: '{goal}' with {N} hours per week available."` |
-| **Skill Gap Analysis** | `"Analyze my skill gap for becoming a {target}. My current skills are: {skills}."` |
-
-On submit, the message appears in the chat as a user bubble and the agent responds in the next rerun.
-
-#### Course Catalog Explorer
-
-Filterable view of all 2,759 courses loaded from `data/processed/cleaned_courses.csv` via `@st.cache_data` (loaded once per process, not per rerun).
-
-Filters: category multiselect, difficulty multiselect, minimum rating slider (0–5).
-
-Displays: Course, University, Level, Rating, Category, Est. Hours — `height=300`, `hide_index=True`, `use_container_width=True`.
-
-#### Reset Chat
-
-Button at the bottom of the sidebar. Calls `agent.reset()` (clears agent's internal conversation state) AND clears `st.session_state["messages"]` (clears the chat display). Profile is not affected.
+Calls `agent.reset()` (clears the agent's internal conversation state) and clears `st.session_state["messages"]` (clears the visible chat history). The profile in SQLite is untouched.
 
 ---
 
-### Chat Panel
+## Chat panel
 
-#### Message History
-Every message in `st.session_state["messages"]` is rendered as a `st.chat_message` bubble (`"user"` or `"assistant"` role). If the message has a `chart_data` payload, the chart is rendered inside the same bubble immediately below the text.
+### Message rendering
 
-#### Agent Response Processing
-When the last message in history is from the user, `_process_pending_message` fires:
+Every message in `st.session_state["messages"]` renders as a `st.chat_message` bubble. If an assistant message has a `chart_data` payload attached, the chart renders inside the same bubble right below the text.
+
+### How responses get processed
+
+When the last message in history is from the user and there's no reply yet, `_process_pending_message` runs:
 1. Calls `agent.chat(content)` inside `st.spinner("Thinking...")`
-2. Parses the response for chart patterns via `_extract_chart_data(response)`
-3. Appends the assistant message dict (with optional `chart_data`) to history
-4. Calls `st.rerun()` — safe because on re-entry the last message is now `"assistant"` role, so the function exits immediately without an infinite loop
+2. Parses the response text for chart patterns
+3. Appends the assistant reply (with optional chart data) to history
+4. Calls `st.rerun()`
 
-#### Chat Input
-`st.chat_input(...)` — pinned to the bottom of the page by Streamlit's layout engine. Submits on Enter, appends user message, reruns.
+On re-entry, the last message is now from the assistant, so the function exits immediately — no infinite loop.
+
+### Chat input
+
+`st.chat_input(...)` is pinned to the bottom of the page regardless of where in the code it's called. Submit on Enter, appends to history, reruns.
 
 ---
 
-### Inline Charts (Auto-Detected from Agent Output)
+## Inline charts
 
-Charts are triggered by regex pattern matching on the agent's text response — no separate API calls needed.
+Charts are detected from the agent's text output by regex — no separate API calls, no structured data format required. The agent tools already produce consistent text output, so pattern matching is enough.
 
-#### Timeline Gantt Chart
-Triggered when the response contains `"--- Timeline"` (from `create_learning_path` or `estimate_learning_timeline` tool output).
+### Learning path timeline (Gantt)
 
-Parsed with:
+Triggered when the response contains `"--- Timeline"`. The parser looks for lines like:
 ```
 Weeks 1–20: Beginner (3 courses, ~160 hrs)
-Weeks 21–45: Intermediate (3 courses, ~200 hrs)
-Weeks 46–75: Advanced (3 courses, ~240 hrs)
 ```
+Handles both en-dash (`–`) and regular hyphen (`-`).
 
-Rendered as a horizontal Plotly `go.Bar` Gantt chart:
-- Each level = one bar spanning its week range (`base=` offset creates the Gantt effect)
-- Color-coded: Beginner (#4CAF50 green), Intermediate (#2196F3 blue), Advanced (#FF5722 orange)
-- Hover shows: level, week range, total hours
-- `height=280`, no legend, x-axis = weeks
+Rendered as a horizontal Plotly bar chart (`go.Bar` with `base=` offset for the Gantt effect). Each difficulty level is one bar spanning its week range. Color-coded: Beginner green, Intermediate blue, Advanced orange. Hover shows the level, week range, and total hours.
 
-#### Skill Gap Donut Chart
-Triggered when the response contains `"Skill Gap Analysis"` and `"Completion: X%"` (from `analyze_skill_gap` tool output).
+### Skill gap donut
 
-Rendered as a Plotly `go.Pie` donut (`hole=0.55`):
-- "Skills Matched" slice in green, "Gap Remaining" slice in light grey
-- Center annotation shows the completion percentage at 26px font
-- `height=280`
+Triggered when the response contains `"Skill Gap Analysis"` and `"Completion: X%"`.
+
+Rendered as a Plotly donut chart (`go.Pie` with `hole=0.55`). "Skills Matched" in green, "Gap Remaining" in grey. A center annotation shows the percentage at 26px.
 
 ---
 
-### Architecture
-
-#### Session State
+## Session state
 
 ```python
 st.session_state = {
-    "user_id": str | None,            # gates login screen
-    "agent":   CourseAdvisorAgent | None,  # one per browser session
-    "messages": [                      # full chat history
+    "user_id": str | None,             # None → show login screen
+    "agent":   CourseAdvisorAgent | None,  # created once per browser session
+    "messages": [
         {"role": "user"|"assistant", "content": str, "chart_data": dict|None},
         ...
     ]
 }
 ```
 
-The agent is stored in `st.session_state` (not `@st.cache_resource`) because it is user-specific. It is created once per browser session and survives reruns. A browser refresh resets the session but profile data is safe in SQLite — the user just logs in again.
-
-#### Regex Patterns
-
-```python
-TIMELINE_TRIGGER_RE  = re.compile(r"---\s*Timeline", re.IGNORECASE)
-TIMELINE_ROW_RE      = re.compile(
-    r"Weeks?\s+(\d+)\s*[–\-]\s*(\d+)\s*[:\s]+(\w+)\s*"
-    r"\(\d+\s*courses?,\s*~(\d+)\s*hrs?\)", re.IGNORECASE
-)
-SKILL_GAP_TRIGGER_RE = re.compile(r"Skill\s+Gap\s+Analysis", re.IGNORECASE)
-COMPLETION_RE        = re.compile(r"Completion:\s*(\d+(?:\.\d+)?)\s*%", re.IGNORECASE)
-```
-
-Both en-dash (`–`) and regular hyphen (`-`) are handled in `TIMELINE_ROW_RE`.
-
-#### Data Loading
-
-```python
-@st.cache_data
-def load_courses() -> pd.DataFrame
-```
-
-The cleaned CSV is loaded once per process and cached. Filter operations return new DataFrames and never mutate the cache.
+The agent lives in session state (not `@st.cache_resource`) because it's user-specific. A browser refresh resets the session, but the profile in SQLite survives — the user just logs back in.
 
 ---
 
----
+## Visual theme
 
-## Visual Theme
+A custom dark theme is injected via `_apply_theme()` right after `st.set_page_config`. Everything is plain CSS via `st.markdown(..., unsafe_allow_html=True)`.
 
-After initial functionality was complete, a full custom CSS theme was applied to the app via `_apply_theme()` — a helper injected with `st.markdown(..., unsafe_allow_html=True)` immediately after `st.set_page_config`.
+**Color palette:**
 
-### Color Palette
-
-| Token | Value | Used for |
-|---|---|---|
-| App background | `#0e1117` | Full-page dark background |
-| Sidebar / cards | `#141920` | Sidebar, login card, chart backgrounds |
-| Border | `#1e2a3a` | Sidebar border, card border, dividers |
-| Primary text | `#d4dcea` | Chat message text |
-| Muted text | `#5c7288` | Captions, sub-labels, secondary info |
-| Teal accent | `#00bfa5` | Buttons, focus rings, hover states, metric values |
-| Teal gradient | `#00bfa5 → #0097a7` | Primary button fill, avatar badge |
-
-### CSS Injection (`_apply_theme`)
-
-| Rule | Effect |
+| Use | Value |
 |---|---|
-| `@import url(Inter)` | Loads Inter 300–700 from Google Fonts |
-| `#MainMenu`, `footer`, `.stDeployButton` hidden | Strips Streamlit chrome |
-| `.stApp { background: #0e1117 }` | Dark full-page background |
-| `section[data-testid="stSidebar"]` | Dark sidebar with border |
-| Primary button gradient | Teal `135deg` gradient fill, white text |
-| Secondary buttons | Dark fill (`#1a2233`), teal border on hover |
-| Chat message containers | `border-radius: 12px`, Inter font |
-| Chat input textarea | Dark fill, teal focus ring (`box-shadow`) |
-| `.stMetricValue` | `#00e5cc` teal, `1.4rem`, bold |
-| Expander summaries | Grey default, teal when open |
-| `.login-card` / `.login-title` / `.accent` | Login card box with teal "Advisor" word |
-| Custom scrollbar | 6px, dark track, teal thumb on hover |
+| App background | `#080c12` |
+| Sidebar / cards | `#0d1117` |
+| Borders | `#1a2638` |
+| Primary text | `#cdd9ea` |
+| Muted text | `#4a6278` |
+| Teal accent | `#00c9a7` |
+| Teal gradient | `#00c9a7 → #0076a8` |
 
-### Login Screen
-
-Replaced plain `st.text_input` label with an HTML card:
-```html
-<div class="login-card">
-  <div class="login-title">Course <span class="accent">Advisor</span></div>
-  <div class="login-sub">AI-powered learning path planner — Coursera × LLM</div>
-</div>
-```
-Username input and button render below the card inside the center column.
-
-### Sidebar Avatar Badge
-
-The sidebar header was replaced with an initials badge:
-```html
-<div style="display:flex;align-items:center;gap:0.75rem">
-  <div style="background:linear-gradient(135deg,#00bfa5,#0097a7); border-radius:50%">{initials}</div>
-  <div>{username}<br><small>Learning Profile</small></div>
-</div>
-```
-Initials are `user_id[:2].upper()`.
-
-### Plotly Dark Theme
-
-Both inline charts updated to match the dark app background:
-
-| Property | Value |
-|---|---|
-| `paper_bgcolor` | `#141920` |
-| `plot_bgcolor` | `#141920` |
-| `font.color` | `#9eb3cc` |
-| `xaxis.gridcolor` | `#1e2a3a` |
-| `legend.bgcolor` | `#141920` |
+**Highlights:** Inter font loaded from Google Fonts; Streamlit chrome (main menu, footer, deploy button) hidden; primary buttons have a teal gradient fill with a glow shadow; the chat input gets a teal focus ring; both charts match the dark background.
 
 ---
 
-## Files Created
+## Function inventory
 
-| File | Description |
+| Function | What it does |
 |---|---|
-| `app/__init__.py` | Empty Python package marker |
-| `app/streamlit_app.py` | Complete Streamlit application with custom CSS theme |
-
-## Files Modified
-
-None — the entire web UI is built on top of the existing backend without touching any Phase 1–5 code.
-
----
-
-## Function Inventory
-
-| Function | Purpose |
-|---|---|
-| `_apply_theme()` | Inject custom CSS: dark background, teal accents, Inter font, hidden chrome |
-| `init_session_state()` | Initialize all session_state keys with safe defaults |
+| `_apply_theme()` | Injects the full CSS block |
+| `init_session_state()` | Sets defaults on first run |
 | `load_courses()` | `@st.cache_data` CSV loader for the course catalog |
-| `render_login_screen()` | Centered username input; returns name on submit |
-| `render_sidebar(agent)` | Sidebar orchestrator |
-| `_render_profile_cards(agent)` | Skill tags, goal text, hrs/week + level metrics |
+| `render_login_screen()` | Centered username card; returns name on submit |
+| `render_sidebar(agent)` | Orchestrates the full sidebar |
+| `_render_profile_cards(agent)` | Skill tags, goal, hours/level metrics |
 | `_render_edit_forms(agent)` | Add skills / set goal / set hours expanders |
 | `_render_quick_actions()` | Learning path and skill gap prefill forms |
-| `_enqueue_user_message(content)` | Append user message + trigger rerun |
+| `_enqueue_user_message(content)` | Appends user message + triggers rerun |
 | `_render_course_explorer()` | Filterable course catalog table |
 | `render_chat_panel(agent)` | Main chat area orchestrator |
-| `_render_message_history()` | Render all chat bubbles + inline charts |
-| `_process_pending_message(agent)` | Call agent for unanswered user message |
-| `_render_chat_input()` | Capture `st.chat_input` submission |
-| `_extract_chart_data(response)` | Regex-parse response for chart trigger patterns |
-| `_render_chart(chart_data)` | Dispatch to timeline or skill gap renderer |
-| `_render_timeline_chart(rows)` | Plotly horizontal Gantt bar chart |
-| `_render_skill_gap_chart(completion)` | Plotly donut chart with center annotation |
+| `_render_empty_state()` | Welcome hero + suggested prompt cards |
+| `_render_message_history()` | Renders all chat bubbles + inline charts |
+| `_process_pending_message(agent)` | Calls agent for unanswered user messages |
+| `_render_chat_input()` | Captures `st.chat_input` submission |
+| `_extract_chart_data(response)` | Regex parser for chart trigger patterns |
+| `_render_chart(chart_data)` | Dispatches to timeline or skill gap renderer |
+| `_render_timeline_chart(rows)` | Plotly horizontal Gantt chart |
+| `_render_skill_gap_chart(completion)` | Plotly donut with center annotation |
 
 ---
 
-## Verification
+## Files
 
-| Test | Expected Result |
-|---|---|
-| `streamlit run app/streamlit_app.py` | App opens at `localhost:8501` |
-| Enter username → Start Learning | Agent loads (spinner), sidebar shows profile |
-| Returning user (e.g. "alice" with saved skills) | Skills + goal appear in sidebar immediately |
-| Add skills via sidebar form | Tags update in profile cards after rerun |
-| Type "Create a learning path for data science, 10 hrs/week" | Agent responds with path + Gantt chart appears below |
-| Type "Analyze my skill gap for machine learning, I know Python" | Agent responds with gap analysis + donut chart appears |
-| Use "Build Learning Path" quick action | Pre-filled message appears in chat, agent responds |
-| Open "Browse Courses" in sidebar, filter by Data Science + Beginner | Table shows filtered subset with row count |
-| Click "Reset Chat" | Chat history clears, profile unchanged |
-| Refresh browser, re-enter same username | Profile reloads from SQLite, chat history empty |
+**Created:**
+- `app/__init__.py` — Python package marker
+- `app/streamlit_app.py` — complete Streamlit application
+
+**Modified:** None — the web UI is a pure frontend layer over the Phase 1–5 backend.
 
 ---
 
-## Tech Notes
-
-- `st.set_page_config` is the first Streamlit call in the file — required by Streamlit
-- `st.stop()` halts rendering on the login screen; prevents `AttributeError` on `None` agent
-- All sidebar widgets have explicit `key=` arguments to avoid `DuplicateWidgetID` errors
-- `st.chat_input` is always pinned to the bottom of the page regardless of call location
-- Profile data survives browser refresh (SQLite); chat history does not (session state)
-
----
-
-**Status**: Phase 6 Complete
-**Next Phase**: Phase 7 Complete — see [PHASE7_COMPLETE.md](PHASE7_COMPLETE.md)
-**Updated**: February 22, 2026
+**Next:** [Phase 7 — Docker](PHASE7_COMPLETE.md)
+*Updated: February 2026*

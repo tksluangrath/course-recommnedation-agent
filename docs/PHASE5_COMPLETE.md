@@ -1,183 +1,100 @@
-# Phase 5 Complete — User Profile Persistence & Smarter Timelines
+# Phase 5 — User Profiles & Smarter Timelines ✅
 
-## Summary
+Two things were frustrating about the agent at the end of Phase 4. First, you had to re-introduce yourself every session — "I know Python and SQL, I want to become a data scientist" — because nothing persisted between runs. Second, timeline estimates were all over the place because the fallback when a course was missing its hour count was always 20h, whether that course was a 2-hour guided project or a 6-month specialization.
 
-Phase 5 added two major improvements to the Course Advisor agent:
+Phase 5 fixed both.
 
-1. **User profile persistence** — users now have a saved profile (skills, goal, study hours) that persists across CLI sessions in SQLite and is automatically injected into every agent conversation turn.
-2. **Smarter timeline defaults** — replaced the flat 20-hour fallback with product-type-aware defaults so Guided Projects, Courses, Specializations, and Professional Certificates each get realistic hour estimates.
+## User profiles
 
----
+### The database model
 
-## What Was Built
+A `UserProfile` table was added to SQLite with the columns that matter for personalization:
 
-### 1. `UserProfile` Database Model
+| Column | What it stores |
+|---|---|
+| `user_id` | Username (primary key) |
+| `known_skills` | JSON array of skill strings |
+| `goals` | Free-text learning goal |
+| `hours_per_week` | Weekly study hours (default: 10.0) |
+| `preferred_difficulty` | Optional difficulty preference |
+| `created_at` / `updated_at` | Timestamps |
 
-**File:** `src/utils/database.py`
-
-Added a new SQLAlchemy model with its own table:
-
-| Column | Type | Description |
-|---|---|---|
-| `user_id` | String (PK) | Username — primary key |
-| `known_skills` | Text | JSON array of skill strings |
-| `goals` | Text | Free-text learning goal |
-| `hours_per_week` | Float | Available study hours per week (default: 10.0) |
-| `preferred_difficulty` | String | Optional difficulty preference |
-| `created_at` / `updated_at` | DateTime | Timestamps |
+`known_skills` is stored as JSON under the hood but always serializes/deserializes automatically — callers get a plain `List[str]` and never have to think about it.
 
 Three new `DatabaseManager` methods: `get_profile`, `get_or_create_profile`, `update_profile`.
-`known_skills` is stored as a JSON string and automatically serialized/deserialized so callers always work with `List[str]`.
 
----
+### Profile injection
 
-### 2. `ProfileManager` — New Module
+The important part isn't just storing the profile — it's making sure the agent actually uses it. Every time you send a message, `CourseAdvisorAgent.chat()` prepends a `SystemMessage` with a one-liner like:
 
-**File:** `src/utils/profile_manager.py`
-
-A clean wrapper over `DatabaseManager` that owns all profile operations:
-
-| Method | Description |
-|---|---|
-| `load(user_id)` | Returns profile as a plain dict |
-| `save(user_id, profile)` | Writes back to SQLite |
-| `add_skills(user_id, new_skills)` | Merges + deduplicates skills, returns updated list |
-| `get_context_string(user_id)` | Formats one-liner for agent system prompt injection |
-| `format_display(user_id)` | Multi-line profile display for `/profile` command |
-
-**Context string example:**
 ```
 User profile — Known skills: Python, SQL, Pandas | Goal: become a data scientist | 8 hrs/week
 ```
 
----
+This means the agent always has context. You can ask "what should I learn next?" without restating your background, and it gives you a personalized answer instead of a generic one.
 
-### 3. Agent Profile Integration
+The user's `hours_per_week` is also wired directly into the tools module via `set_active_profile()`, so learning path timelines automatically use the right study pace without you having to type `| 8` every time.
 
-**File:** `src/agents/course_advisor.py`
+### CLI profile commands
 
-- `__init__` now accepts `user_id: str` and loads the profile from SQLite on startup.
-- `chat()` prepends a `SystemMessage` with the profile context string before every conversation turn — the agent always knows the user's skills and goal without the user having to repeat them.
-- Added pass-through methods: `get_profile()`, `update_profile(**kwargs)`, `add_skills(skills)`, `display_profile()`.
-- Profile `hours_per_week` is wired into the tools module via `set_active_profile()` so timelines automatically use the user's preferred study pace.
+The CLI got a rewrite to support user-aware sessions:
 
----
-
-### 4. CLI Profile Commands
-
-**File:** `src/agents/chat_cli.py`
-
-Complete rewrite to support user-aware sessions:
-
-**Startup:**
-- `--user <name>` CLI argument (e.g., `python chat_cli.py --user alice`) or interactive prompt.
-- Personalized greeting for returning users showing their goal, top skills, and study hours.
-- Fresh users get a setup prompt.
-
-**New slash commands:**
-
-| Command | Description |
-|---|---|
-| `/profile` | Display the full saved profile |
-| `/skills Python, SQL, R` | Add skills (persisted immediately) |
-| `/goal become a ML engineer` | Set/update learning goal |
-| `/hours 8` | Set available study hours per week |
-| `/quit` | Show profile summary and exit |
-
-**Example session:**
+```bash
+python src/agents/chat_cli.py --user alice
 ```
-$ python src/agents/chat_cli.py --user alice
 
+Returning users see a personalized greeting:
+```
 Welcome back, alice!
   Goal       : become a data scientist
   Skills     : Python, SQL, Pandas
   Study time : 8 hrs/week
-
-You: what should I learn next?
-Advisor: Given your Python, SQL, and Pandas background, I'd recommend...
 ```
 
----
+New users get a setup prompt instead.
 
-### 5. Product-Type-Aware Timeline Defaults
+Commands available mid-chat:
 
-**File:** `src/recommender/path_graph.py`
+| Command | What it does |
+|---|---|
+| `/profile` | Print the full saved profile |
+| `/skills Python, R, dbt` | Add skills (persisted immediately) |
+| `/goal become a ML engineer` | Update the learning goal |
+| `/hours 8` | Set weekly study hours |
+| `/quit` | Show a profile summary and exit |
 
-Replaced the flat `fillna(20.0)` fallback with realistic defaults per course type:
+## Smarter timeline defaults
 
-| Product Type | Default Hours |
+The flat `fillna(20.0)` approach in `estimate_timeline` meant a 2-hour Guided Project and a 100-hour Specialization were treated identically when their hour field was missing. That's obviously wrong.
+
+Phase 5 replaced the fallback with a lookup table:
+
+| Product type | Default hours |
 |---|---|
 | Guided Project | 2 |
 | Course | 20 |
 | Specialization | 100 |
 | Professional Certificate | 100 |
-| (unknown) | 20 |
+| (anything else) | 20 |
 
-New `_resolve_hours(row)` static method checks `estimated_hours` first; if missing or NaN, looks up the product-type default. `estimate_timeline` now calls this per-row instead of summing after `fillna`.
+A new `_resolve_hours(row)` method checks the actual `estimated_hours` field first. If it's missing or NaN, it falls back to the product-type default. The `learning_product` column is now propagated all the way through `_attach_hours` in the content-based recommender so it's always available when needed.
 
-**Result:** A path with 2 Guided Projects + 1 Course + 1 Specialization now estimates `2+2+20+100 = 124h` instead of the incorrect `20×4 = 80h`.
+**Concrete improvement:** a path with 2 Guided Projects + 1 Course + 1 Specialization now estimates `2 + 2 + 20 + 100 = 124h` instead of the wrong `20 × 4 = 80h`.
 
----
+## Files changed
 
-### 6. `learning_product` Propagated Through Pipeline
-
-**File:** `src/recommender/content_based.py`
-
-`_attach_hours` was updated to attach both `estimated_hours` and `learning_product` from the cleaned CSV so that `_resolve_hours` always has the product type available for fallback:
-
-```python
-for col in ['estimated_hours', 'learning_product']:
-    col_map = self.courses_df.set_index('course_name')[col].to_dict()
-    df[col] = df['course_name'].map(col_map)
-```
-
----
-
-### 7. Profile `hours_per_week` Wired Into Tools
-
-**File:** `src/tools/recommender_tools.py`
-
-Added module-level `_active_profile` global and `set_active_profile(profile)` function. Both `create_learning_path` and `estimate_learning_timeline` now read `_active_profile.get('hours_per_week', 10.0)` as the default study pace — no need for the user to type `| 8` every time if they've set `/hours 8` in their profile.
-
----
-
-## Files Changed
-
-| File | Change Type | Summary |
-|---|---|---|
-| `src/utils/database.py` | Modified | `UserProfile` model + `get_profile`, `get_or_create_profile`, `update_profile` |
-| `src/utils/profile_manager.py` | **Created** | `ProfileManager` — load/save/add_skills/context_string/display |
-| `src/agents/course_advisor.py` | Modified | `user_id` support, `SystemMessage` profile injection, pass-through methods |
-| `src/agents/chat_cli.py` | Rewritten | Username prompt, personalized greeting, 4 new profile commands |
-| `src/recommender/path_graph.py` | Modified | `PRODUCT_HOUR_DEFAULTS`, `_resolve_hours()`, smarter `estimate_timeline` |
-| `src/recommender/content_based.py` | Modified | `_attach_hours` now propagates `learning_product` |
-| `src/tools/recommender_tools.py` | Modified | `set_active_profile()`, profile `hours_per_week` wired into timeline tools |
-
----
-
-## Verification
-
-| Test | Expected Outcome |
+| File | What changed |
 |---|---|
-| Start as "alice", `/skills Python, SQL`, `/hours 8`, quit. Restart as "alice". | Profile shown in greeting: skills + 8 hrs/week |
-| Ask "what should I learn?" without stating skills. | Agent already knows skills from injected profile context |
-| `estimate_learning_timeline.invoke("data science | 10")` | Guided Projects show ~2 hrs, Specializations ~100 hrs |
-| Set `/hours 8`, ask for a learning path (no `| 8` in query). | Timeline block says "8 hrs/week" |
-| Start as "bob" with different skills. | Bob's profile is independent of alice's |
+| `src/utils/database.py` | `UserProfile` model + 3 profile CRUD methods |
+| `src/agents/course_advisor.py` | `user_id` support, `SystemMessage` profile injection, profile pass-through methods |
+| `src/agents/chat_cli.py` | Full rewrite — username arg, personalized greeting, 4 new slash commands |
+| `src/recommender/path_graph.py` | `PRODUCT_HOUR_DEFAULTS`, `_resolve_hours()`, smarter `estimate_timeline` |
+| `src/recommender/content_based.py` | `_attach_hours` now also propagates `learning_product` |
+| `src/tools/recommender_tools.py` | `set_active_profile()`, profile hours wired into timeline tools |
+
+No existing tool signatures or agent API methods changed — everything in Phases 1–4 continued to work unchanged.
 
 ---
 
-## Phase 5 Stats
-
-- **1 new module** created (`profile_manager.py`) — later consolidated into `database.py` during file cleanup
-- **1 new database table** (`user_profiles`)
-- **3 new profile CRUD methods** on `DatabaseManager`
-- **5 new CLI commands** (`/profile`, `/skills`, `/goal`, `/hours`, improved `/quit`)
-- **Product-type-aware timeline** replaces flat 20h default across all paths
-- **Zero breaking changes** — all existing tool signatures and agent API preserved
-
----
-
-**Status**: Phase 5 Complete
-**Next Phase**: Phase 6 Complete — see [PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)
-**Updated**: February 2026
+**Next:** [Phase 6 — Web Interface](PHASE6_COMPLETE.md)
+*Updated: February 2026*

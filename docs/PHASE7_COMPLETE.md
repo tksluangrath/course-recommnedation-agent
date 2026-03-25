@@ -1,64 +1,44 @@
-# Phase 7 Complete — Docker Compose Deployment
+# Phase 7 — Docker Compose Deployment ✅
 
-## Summary
+Phase 7 wraps the whole project in Docker so anyone can run it with a single command — no Python install, no Ollama install, no manual data pipeline. The goal was to make "getting it running" a completely solved problem.
 
-Phase 7 wraps the entire project in a Docker Compose setup so anyone can run the app with a single command — no Python install, no Ollama install, no manual data pipeline. Everything is containerized and self-contained.
-
-**Run the app:**
 ```bash
-docker compose up --build   # first time (~4.7 GB model download)
-docker compose up           # after that
+docker compose up --build
 ```
-Open `http://localhost:8501`
+
+Open `http://localhost:8501`. Done.
 
 ---
 
-## What Was Built
+## How it's structured
 
-### Two-Container Architecture
+Two containers, orchestrated by Docker Compose:
 
-| Service | Image | Purpose |
+| Container | Image | What it does |
 |---|---|---|
-| `ollama` | `ollama/ollama` (official) | Runs Llama 3.1 locally, serves on port 11434 |
-| `app` | Built from `Dockerfile` | Python 3.11 + all dependencies, runs Streamlit on port 8501 |
+| `ollama` | `ollama/ollama` (official) | Runs Llama 3.1 locally on port 11434 |
+| `app` | Built from `Dockerfile` | Python 3.11 + all dependencies + Streamlit on port 8501 |
 
-The `app` container waits for `ollama` to pass its healthcheck before starting, so the agent is never initialized before the LLM is ready.
+The `app` container waits for `ollama` to pass its healthcheck before starting — so the agent is never initialized before the LLM is actually ready to respond.
 
-### Model Caching
+### The model download problem
 
-Llama 3.1 weights (~4.7 GB) are stored in a named Docker volume (`ollama_data`). The download happens once on first run — subsequent `docker compose up` calls start in seconds.
+Llama 3.1 is ~4.7 GB. Baking it into the image would make the image enormous and require a re-download every time you rebuild. Instead, the weights are stored in a named Docker volume (`ollama_data`). The download happens once via `docker-entrypoint.sh` on first run. Every subsequent `docker compose up` skips the download and starts in seconds.
 
-### Data Persistence
+### Data persistence
 
 The `./data` directory is mounted as a volume into the container at `/app/data`. This means:
-- No ETL re-run needed — existing SQLite and ChromaDB data carry over immediately
-- User profiles created inside Docker persist between container restarts
-- The same `data/` folder works for both Docker and manual local runs
+- The existing SQLite database and ChromaDB vector store carry over immediately — no re-running the data pipeline inside Docker
+- User profiles created in Docker persist between container restarts
+- The same `data/` folder works for both Docker and local runs interchangeably
 
-### Container Networking
+### Container networking
 
-The two containers share a default Docker Compose network. The `app` service reaches Ollama via the service name (`http://ollama:11434`) instead of `localhost`. This required one code change: `OLLAMA_HOST` env var support in `llm_config.py`.
-
----
-
-## Files Created
-
-| File | Description |
-|---|---|
-| `Dockerfile` | `python:3.11-slim` base, installs requirements, copies `src/` and `app/` |
-| `docker-compose.yml` | Defines `ollama` + `app` services, volumes, healthcheck, and env vars |
-| `docker-entrypoint.sh` | Pulls `llama3.1` via Ollama REST API on first run, then starts Streamlit |
-| `.dockerignore` | Excludes `data/`, `.env`, `__pycache__`, `.git` from the image |
-
-## Files Modified
-
-| File | Change |
-|---|---|
-| `src/utils/llm_config.py` | Added `OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")` and passed it as `base_url` to both `Ollama()` and `ChatOllama()` |
+Both containers share a Docker Compose network. The `app` container reaches Ollama at `http://ollama:11434` (the service name) instead of `localhost`. This required one code change: `llm_config.py` now reads `OLLAMA_HOST` from the environment, defaulting to `http://localhost:11434` so local runs still work unchanged.
 
 ---
 
-## File Details
+## Files created
 
 ### `Dockerfile`
 
@@ -83,9 +63,7 @@ EXPOSE 8501
 ENTRYPOINT ["./docker-entrypoint.sh"]
 ```
 
-- `python:3.11-slim` chosen for compatibility (avoids Windows Python 3.13 PyTorch DLL issues)
-- `curl` installed for the model pull in the entrypoint script
-- `data/` is intentionally excluded (mounted as volume, not baked into image)
+Python 3.11-slim was chosen deliberately — it sidesteps the Windows Python 3.13 + PyTorch DLL issue that affects local development. `curl` is installed because the entrypoint script needs it to trigger the model pull. `data/` is intentionally excluded from the image (it's mounted as a volume).
 
 ### `docker-compose.yml`
 
@@ -121,10 +99,7 @@ volumes:
   ollama_data:
 ```
 
-Key decisions:
-- `condition: service_healthy` — app waits for Ollama to actually be responding, not just started
-- `.env` mounted read-only (`:ro`) so container can't accidentally overwrite it
-- `restart: unless-stopped` — app container auto-restarts on crash
+A few decisions worth noting: `condition: service_healthy` means the app waits for Ollama to actually respond, not just to have started. The `.env` file is mounted read-only so the container can read it but can't accidentally overwrite it. `restart: unless-stopped` means the app container comes back automatically if it crashes.
 
 ### `docker-entrypoint.sh`
 
@@ -144,37 +119,35 @@ exec streamlit run app/streamlit_app.py \
      --server.headless=true
 ```
 
-- `stream:false` in the pull request keeps output clean (waits for download to complete before continuing)
-- `--server.address=0.0.0.0` required so Streamlit binds to all interfaces, not just localhost inside the container
-- `--server.headless=true` suppresses the "open browser" prompt
+`stream:false` keeps the pull synchronous — the script waits for the full download before proceeding to start Streamlit. `--server.address=0.0.0.0` is required so Streamlit binds to all interfaces inside the container, not just localhost. Without it the port mapping doesn't work.
 
-### `llm_config.py` change
+## Files modified
 
+`src/utils/llm_config.py` — one line added:
 ```python
 # Before
 llm = ChatOllama(model=LLMConfig.OLLAMA_MODEL, temperature=...)
 
 # After
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-llm = ChatOllama(model=LLMConfig.OLLAMA_MODEL, base_url=LLMConfig.OLLAMA_HOST, temperature=...)
+llm = ChatOllama(model=LLMConfig.OLLAMA_MODEL, base_url=OLLAMA_HOST, temperature=...)
 ```
 
-Default remains `http://localhost:11434` so manual local runs still work unchanged. Docker sets `OLLAMA_HOST=http://ollama:11434` via the compose environment block.
+The default keeps local runs working. Docker overrides it via the compose environment block.
 
 ---
 
-## Verification
+## What to expect on first run
 
-| Test | Expected |
-|---|---|
-| `docker compose up --build` | Pulls Llama 3.1, builds image, starts both containers |
-| `http://localhost:8501` | Streamlit login screen appears |
-| Login → chat → "recommend me some Python courses" | Agent responds using Ollama in the other container |
-| Stop and restart with `docker compose up` | App starts in seconds, no model re-download |
-| Profile data from previous session | Still present (data/ volume persists) |
+1. Docker builds the `app` image (installs all Python dependencies — takes a few minutes the first time)
+2. The `ollama` container starts and passes its healthcheck
+3. The `app` container starts and `docker-entrypoint.sh` runs
+4. The script pulls Llama 3.1 from Ollama's servers (~4.7 GB — can take a while depending on your connection)
+5. Streamlit starts and the app is available at `http://localhost:8501`
+
+Every run after that: the model is already in the `ollama_data` volume, so the pull is a no-op and the whole stack is up in a few seconds.
 
 ---
 
-**Status**: Phase 7 Complete
-**Next**: Project feature-complete across all 7 phases
-**Updated**: February 2026
+**Status**: All 7 phases complete. The project is feature-complete.
+*Updated: February 2026*
