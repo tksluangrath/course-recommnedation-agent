@@ -8,33 +8,27 @@ returns formatted text for the LLM.
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 
 # Add parent paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "recommender"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "agents"))
 
 from database import DatabaseManager
 from content_based import ContentBasedRecommender
 from hybrid import HybridRecommender
 from path_graph import LearningPathGraph
+from state import CourseAdvisorState
 
 
-# Shared instances (initialized lazily)
+# Shared instances (initialized lazily) — stateless, read-only, shared across users
 _db = None
 _content_rec = None
 _hybrid_rec = None
 _path_graph = None
-
-# Active user profile (set by CourseAdvisorAgent on startup)
-_active_profile: dict = {}
-
-
-def set_active_profile(profile: dict) -> None:
-    """Update the active user profile used by tools for defaults (e.g. hours_per_week)."""
-    global _active_profile
-    _active_profile = profile or {}
 
 
 def _get_db():
@@ -165,7 +159,11 @@ def recommend_by_skills(skills: str) -> str:
 
 
 @tool
-def create_learning_path(goal: str, current_skills: str = "") -> str:
+def create_learning_path(
+    goal: str,
+    current_skills: str = "",
+    state: Annotated[CourseAdvisorState, InjectedState] = None,
+) -> str:
     """Create a structured learning path from beginner to advanced for a goal.
     Use this when the user wants a step-by-step learning plan.
     Optionally accepts 'goal | hours_per_week' format (e.g. 'machine learning | 8').
@@ -175,8 +173,8 @@ def create_learning_path(goal: str, current_skills: str = "") -> str:
         current_skills: Optional comma-separated skills the user already has
     """
     # Parse optional hours_per_week from goal using pipe separator;
-    # fall back to user profile value if not specified
-    hours_per_week = _active_profile.get('hours_per_week', 10.0) or 10.0
+    # fall back to the per-request graph state if not specified
+    hours_per_week = (state or {}).get('hours_per_week', 10.0) or 10.0
     if "|" in goal:
         parts = goal.split("|", 1)
         goal = parts[0].strip()
@@ -332,7 +330,10 @@ def get_popular_skills(category: str = "") -> str:
 
 
 @tool
-def estimate_learning_timeline(goal_and_hours: str) -> str:
+def estimate_learning_timeline(
+    goal_and_hours: str,
+    state: Annotated[CourseAdvisorState, InjectedState] = None,
+) -> str:
     """Estimate how long a learning path will take given available study hours.
     Use this when the user asks how long it will take to learn something, or when
     they mention how many hours per week they can study.
@@ -341,7 +342,7 @@ def estimate_learning_timeline(goal_and_hours: str) -> str:
         goal_and_hours: Format 'goal | hours_per_week', e.g. 'machine learning | 8'
                         If no hours provided, defaults to 10 hrs/week.
     """
-    hours_per_week = _active_profile.get('hours_per_week', 10.0) or 10.0
+    hours_per_week = (state or {}).get('hours_per_week', 10.0) or 10.0
     goal = goal_and_hours.strip()
 
     if "|" in goal_and_hours:

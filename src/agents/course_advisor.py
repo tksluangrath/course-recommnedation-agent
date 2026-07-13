@@ -18,8 +18,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
 
 from llm_config import LLMConfig
-from recommender_tools import get_all_tools, set_active_profile
+from recommender_tools import get_all_tools
 from database import ProfileManager
+from state import CourseAdvisorState
 
 SYSTEM_PROMPT = """You are a friendly and knowledgeable learning advisor. Your job is to help \
 users find the right courses, build personalized learning paths, and plan their education \
@@ -70,9 +71,6 @@ class CourseAdvisorAgent:
         self._profile_mgr = ProfileManager()
         self._profile = self._profile_mgr.load(self.user_id)
 
-        # Wire profile hours into tools module
-        set_active_profile(self._profile)
-
         # Get ChatModel (required for tool calling)
         self.llm = LLMConfig.get_chat_llm(provider=provider, temperature=temperature)
 
@@ -80,11 +78,14 @@ class CourseAdvisorAgent:
         self.tools = get_all_tools()
         print(f"Loaded {len(self.tools)} tools: {[t.name for t in self.tools]}")
 
-        # Create agent using LangChain v1.2 create_agent
+        # Create agent using LangChain v1.2 create_agent. state_schema carries the
+        # per-user profile fields (hours_per_week, etc.) through InjectedState so
+        # tools read them from this invocation's state instead of a shared global.
         self.agent = create_agent(
             self.llm,
             tools=self.tools,
             system_prompt=SYSTEM_PROMPT,
+            state_schema=CourseAdvisorState,
         )
 
         # Conversation history per session
@@ -120,7 +121,13 @@ class CourseAdvisorAgent:
         messages = prefix + list(history) + [HumanMessage(content=message)]
 
         try:
-            result = self.agent.invoke({"messages": messages})
+            result = self.agent.invoke({
+                "messages": messages,
+                "user_id": self.user_id,
+                "known_skills": self._profile.get("known_skills", []),
+                "goals": self._profile.get("goals", ""),
+                "hours_per_week": self._profile.get("hours_per_week", 10.0) or 10.0,
+            })
 
             # Extract the final AI response
             output_messages = result.get("messages", [])
@@ -163,23 +170,16 @@ class CourseAdvisorAgent:
         return self._profile
 
     def update_profile(self, **kwargs) -> dict:
-        """Update profile fields and refresh the active profile in tools."""
-        if 'known_skills' in kwargs and isinstance(kwargs['known_skills'], list):
-            self._profile = self._profile_mgr.save(
-                self.user_id, {**self._profile, **kwargs}
-            )
-        else:
-            self._profile = self._profile_mgr.save(
-                self.user_id, {**self._profile, **kwargs}
-            )
-        set_active_profile(self._profile)
+        """Update profile fields, persisted for the next chat() call's state."""
+        self._profile = self._profile_mgr.save(
+            self.user_id, {**self._profile, **kwargs}
+        )
         return self._profile
 
     def add_skills(self, skills: List[str]) -> List[str]:
         """Add skills to the user profile (deduplicated)."""
         updated = self._profile_mgr.add_skills(self.user_id, skills)
         self._profile['known_skills'] = updated
-        set_active_profile(self._profile)
         return updated
 
     def display_profile(self) -> str:
