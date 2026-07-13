@@ -54,7 +54,7 @@ read `state["hours_per_week"]` — scoped to that single invocation, not a share
 |---|---|---|
 | 1 — Dependency fix | done | orchestrator, no subagent |
 | 2 — Kill global profile hack | done | see Phase 2 section below |
-| 3 — Persistence via checkpointer | not started | |
+| 3 — Persistence via checkpointer | done | see Phase 3 section below |
 | 4 — Explicit control flow | not started | |
 | 5 — Streaming | not started | |
 | 6 — Long-term memory store | not started (optional, needs sign-off) | |
@@ -106,3 +106,57 @@ alone (explicitly Phase 3's problem). `self._profile` itself is still one dict p
 `CourseAdvisorAgent` instance (one instance per Streamlit session already, per the app's
 existing session wiring), so no cross-session leak risk remains from the removed globals; a full
 `StateGraph` rebuild and checkpointer-backed persistence are still Phase 3/4 work.
+
+## Phase 3 — Persistence via checkpointer
+
+Change: `src/agents/course_advisor.py` only.
+- Added a `SqliteSaver` checkpointer, constructed from `self._profile_mgr._db.db_path` (reuses
+  `DatabaseManager`'s already-resolved `DB_PATH`/`data/courses.db` path — no second literal, no
+  second database file) via `sqlite3.connect(db_path, check_same_thread=False)`. Passed to
+  `create_agent(..., checkpointer=self._checkpointer)`.
+- `chat()` now keys every `agent.invoke()` call with `config={"configurable": {"thread_id": sid}}`
+  (`sid` defaults to `self.user_id`, same keying scheme profiles already use) and only passes the
+  new `HumanMessage` (+ profile-context `SystemMessage`) in — the checkpointer/`add_messages`
+  reducer is the source of truth for history, not a Python dict.
+- Removed `self._histories`, `self._session_id`'s bookkeeping dict, and `_get_history()`.
+- Added `_condense_history()`: called at the top of `chat()`, uses
+  `langchain_core.messages.trim_messages(..., max_tokens=3000, token_counter=self.llm)` to find
+  which messages are still within budget; anything older than that is condensed into one LLM
+  summary call and replaced in the checkpoint via `RemoveMessage(id=...)` + one new
+  `SystemMessage` (via `agent.update_state`). Token-aware, and old content is preserved as a
+  summary rather than dropped — not a blunt truncation.
+- `get_history()` keeps its public signature; reimplemented to read
+  `self.agent.get_state(config).values["messages"]` instead of a dict.
+- `reset()` keeps its public signature; reimplemented to call
+  `self._checkpointer.delete_thread(sid)` — `langgraph-checkpoint-sqlite==3.1.0`'s `SqliteSaver`
+  does expose a real `delete_thread(thread_id)` API (confirmed via
+  `[m for m in dir(SqliteSaver) if not m.startswith('_')]`), so no thread-id-suffix workaround was
+  needed.
+
+Exit criteria: zero `self._histories` references; single sqlite path referenced project-wide;
+smoke test proves restart-persistence.
+
+Result: PASS.
+- `grep -rn "self\._histories" --include="*.py" .` → no output (zero hits).
+- Single sqlite path: `src/utils/database.py:142` resolves
+  `os.environ.get("DB_PATH", "data/courses.db")`; `course_advisor.py` reuses that exact resolved
+  string via `self._profile_mgr._db.db_path` — no second literal introduced (the other
+  `data/courses.db` hit at `database.py:591` is pre-existing, in `load_courses_to_database()`,
+  untouched).
+- Smoke test (stub `BaseChatModel` subclass standing in for a real LLM — no API keys needed;
+  `bind_tools` returns `self` so `create_agent`'s tool-binding step is a no-op):
+  1. `CourseAdvisorAgent(user_id="smoke_user")` (instance 1), `chat("What courses do you
+     recommend for machine learning?")` → `"Sure, here are some course ideas!"`.
+     `get_history()` → `[system: profile context, human: ..., ai: "Sure, here are some course
+     ideas!"]`.
+  2. Fresh `CourseAdvisorAgent(user_id="smoke_user")` (instance 2, simulating a process restart —
+     new Python object, same `user_id`, same on-disk DB file). `get_history()` on instance 2
+     returns the same three messages, loaded from the checkpoint on disk, not instance 1's memory.
+  3. `agent2.reset()` → `get_history()` returns `[]`, confirming `delete_thread` actually clears
+     the persisted thread (not just an in-memory no-op).
+
+Deviation from brief: none. One note: the profile-context `SystemMessage` is re-appended on every
+`chat()` call (as it was pre-Phase-3, just now persisted rather than rebuilt each turn) so that
+mid-conversation profile edits (`/skills`, `/goal`, `/hours`) are reflected without extra
+bookkeeping; `_condense_history()`'s token budget absorbs the resulting repeated system messages
+along with the rest of the old history, so this doesn't grow unbounded.
