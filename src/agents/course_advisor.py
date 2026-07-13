@@ -9,11 +9,14 @@ agent with Ollama or Claude as the LLM backend.
 import sqlite3
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal
 
-from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, RemoveMessage, trim_messages
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import ToolNode
+from langgraph.types import interrupt, Command
+from pydantic import BaseModel, Field
 
 # Add parent paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
@@ -58,6 +61,41 @@ Guidelines:
 # condensed into a single summary SystemMessage instead of growing unbounded.
 MAX_HISTORY_TOKENS = 3000
 
+ROUTER_PROMPT = """You are the intent router for a course-advisor assistant. Read the user's \
+latest message (plus any conversation context) and classify it into exactly ONE category:
+
+- "search": finding courses, similar courses, course details, popular/trending skills, or \
+prerequisite chains — anything answerable by searching the catalogue.
+- "skill_gap": the user wants to know which skills or courses they're missing for a goal.
+- "learning_path": the user wants a structured multi-level plan or a timeline estimate.
+- "needs_clarification": the request is too vague to act on and no topic/goal is recoverable \
+from context (e.g. "build me a learning path" with no subject stated anywhere). Put a single \
+specific unblocking question in `clarifying_question`.
+- "profile_mutation": the user is asking to CHANGE their saved profile — set/replace their \
+goal, or add skills (e.g. "set my goal to X", "add Python and SQL to my skills"). Set \
+`profile_field` to "goals" or "skills" and `profile_value` to the new value (for skills, a \
+comma-separated list).
+
+Only pick "needs_clarification" when you genuinely cannot proceed. If the user names any topic, \
+prefer an actionable category."""
+
+
+class RouterIntent(BaseModel):
+    """Structured classification the router node extracts from the user's message."""
+
+    category: Literal[
+        "search", "skill_gap", "learning_path", "needs_clarification", "profile_mutation"
+    ] = Field(description="The single best-fit intent category.")
+    clarifying_question: str = Field(
+        default="", description="A specific question to ask, only when category is needs_clarification."
+    )
+    profile_field: Literal["goals", "skills", ""] = Field(
+        default="", description="Which profile field to change, only when category is profile_mutation."
+    )
+    profile_value: str = Field(
+        default="", description="The new value for the field, only when category is profile_mutation."
+    )
+
 
 class CourseAdvisorAgent:
     """Conversational course recommendation agent."""
@@ -83,6 +121,8 @@ class CourseAdvisorAgent:
         # Load tools
         self.tools = get_all_tools()
         print(f"Loaded {len(self.tools)} tools: {[t.name for t in self.tools]}")
+        self._llm_with_tools = self.llm.bind_tools(self.tools)
+        self._router_llm = self.llm.with_structured_output(RouterIntent)
 
         # Checkpointer: persists conversation history to the same SQLite file
         # DatabaseManager/ProfileManager already use (reuse its resolved path,
@@ -93,22 +133,148 @@ class CourseAdvisorAgent:
         conn = sqlite3.connect(db_path, check_same_thread=False)
         self._checkpointer = SqliteSaver(conn)
 
-        # Create agent using LangChain v1.2 create_agent. state_schema carries the
-        # per-user profile fields (hours_per_week, etc.) through InjectedState so
-        # tools read them from this invocation's state instead of a shared global.
-        # checkpointer makes conversation history durable across process restarts,
-        # keyed by thread_id (== session_id, defaults to user_id).
-        self.agent = create_agent(
-            self.llm,
-            tools=self.tools,
-            system_prompt=SYSTEM_PROMPT,
-            state_schema=CourseAdvisorState,
-            checkpointer=self._checkpointer,
-        )
-
+        self.graph = self._build_graph()
         self._session_id = self.user_id
 
         print("Agent ready!\n")
+
+    # ------------------------------------------------------------------
+    # Graph construction
+    # ------------------------------------------------------------------
+    def _build_graph(self):
+        """Compile the explicit StateGraph.
+
+        Control flow:
+            START -> router
+            router -(route)-> clarify | confirm | agent
+            clarify -> agent      (after interrupt() resumes with the answer)
+            confirm -> END        (mutation done or cancelled)
+            agent   -(tools?)-> tools | END
+            tools   -> agent      (tool-calling loop)
+
+        The router is one LLM structured-output call that buckets the turn into
+        the normal tool-calling agent vs. a clarify interrupt vs. a
+        profile-mutation confirm interrupt — it does NOT hand-route to each of
+        the 9 tools, that stays the agent/ToolNode loop's job.
+        """
+        g = StateGraph(CourseAdvisorState)
+        g.add_node("router", self._router_node)
+        g.add_node("clarify", self._clarify_node)
+        g.add_node("confirm", self._confirm_node)
+        g.add_node("agent", self._agent_node)
+        g.add_node("tools", ToolNode(self.tools))
+
+        g.add_edge(START, "router")
+        g.add_conditional_edges(
+            "router",
+            lambda s: s.get("route", "agent"),
+            {
+                "clarify": "clarify",
+                "confirm": "confirm",
+                "agent": "agent",
+            },
+        )
+        g.add_edge("clarify", "agent")
+        g.add_edge("confirm", END)
+        g.add_conditional_edges(
+            "agent",
+            lambda s: "tools" if getattr(s["messages"][-1], "tool_calls", None) else END,
+            {"tools": "tools", END: END},
+        )
+        g.add_edge("tools", "agent")
+
+        return g.compile(checkpointer=self._checkpointer)
+
+    @staticmethod
+    def _last_human(messages) -> str:
+        """Content of the most recent HumanMessage, or '' if none."""
+        for m in reversed(messages):
+            if isinstance(m, HumanMessage):
+                return m.content or ""
+        return ""
+
+    # ------------------------------------------------------------------
+    # Graph nodes
+    # ------------------------------------------------------------------
+    def _router_node(self, state: CourseAdvisorState) -> dict:
+        """Classify the turn and stash the decision in routing state fields.
+
+        Degrades safely: any router failure falls through to the normal agent
+        path rather than breaking the turn.
+        """
+        text = self._last_human(state["messages"])
+        try:
+            intent = self._router_llm.invoke(
+                [SystemMessage(content=ROUTER_PROMPT), HumanMessage(content=text)]
+            )
+        except Exception:
+            return {"route": "agent", "clarify_question": "", "mutation_field": "", "mutation_value": ""}
+
+        route = "agent"
+        if intent.category == "needs_clarification":
+            route = "clarify"
+        elif intent.category == "profile_mutation" and intent.profile_field:
+            route = "confirm"
+        return {
+            "route": route,
+            "clarify_question": intent.clarifying_question,
+            "mutation_field": intent.profile_field,
+            "mutation_value": intent.profile_value,
+        }
+
+    def _clarify_node(self, state: CourseAdvisorState) -> dict:
+        """Pause execution with a clarifying question, resume with the user's answer.
+
+        interrupt() suspends the whole graph run; the caller sees the question,
+        and the NEXT chat() call resumes here (via Command(resume=...)) with the
+        answer, which we append as a HumanMessage before flowing on to the agent.
+        """
+        question = state.get("clarify_question") or "Could you tell me more about what you're looking for?"
+        answer = interrupt({"type": "clarify", "question": question})
+        return {"messages": [HumanMessage(content=answer)]}
+
+    def _confirm_node(self, state: CourseAdvisorState) -> dict:
+        """Apply a profile mutation, but interrupt for confirmation first if it
+        would overwrite an already-set field.
+        """
+        field = state.get("mutation_field", "")
+        value = (state.get("mutation_value") or "").strip()
+        if not field or not value:
+            return {"messages": [AIMessage(content="I couldn't tell what to update — could you rephrase?")]}
+
+        profile = self._profile_mgr.load(self.user_id)
+        if field == "goals":
+            current = (profile.get("goals") or "").strip()
+            already_set = bool(current)
+            question = (
+                f"You already have a goal set: '{current}'. Replace it with '{value}'? (yes/no)"
+            )
+        else:  # skills
+            current = profile.get("known_skills") or []
+            already_set = bool(current)
+            question = (
+                f"You already have skills recorded ({', '.join(current)}). "
+                f"Add '{value}' to them? (yes/no)"
+            )
+
+        if already_set:
+            answer = interrupt({"type": "confirm", "field": field, "question": question})
+            if str(answer).strip().lower() not in ("yes", "y"):
+                keep = "goal" if field == "goals" else "skills"
+                return {"messages": [AIMessage(content=f"Okay, keeping your existing {keep} unchanged.")]}
+
+        if field == "goals":
+            self.update_profile(goals=value)
+            return {"messages": [AIMessage(content=f"Done — your goal is now '{value}'.")]}
+        skills = [s.strip() for s in value.split(",") if s.strip()]
+        updated = self.add_skills(skills)
+        return {"messages": [AIMessage(content=f"Done — your skills are now: {', '.join(updated)}.")]}
+
+    def _agent_node(self, state: CourseAdvisorState) -> dict:
+        """Normal tool-calling LLM step. Loops with the ToolNode until no tool calls remain."""
+        messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(state["messages"])
+        response = self._llm_with_tools.invoke(messages)
+        return {"messages": [response]}
 
     def _condense_history(self, config: dict) -> None:
         """Condense old messages in the checkpointed thread once they exceed a token budget.
@@ -118,7 +284,7 @@ class CourseAdvisorAgent:
         dropped), then removed from the checkpoint via RemoveMessage. Recent messages
         (within the token budget) are left untouched.
         """
-        state = self.agent.get_state(config)
+        state = self.graph.get_state(config)
         messages = state.values.get("messages", []) if state.values else []
         if not messages:
             return
@@ -146,7 +312,7 @@ class CourseAdvisorAgent:
         ]
         summary = self.llm.invoke(summary_prompt).content
 
-        self.agent.update_state(
+        self.graph.update_state(
             config,
             {
                 "messages": [RemoveMessage(id=m.id) for m in older]
@@ -154,51 +320,71 @@ class CourseAdvisorAgent:
             },
         )
 
+    def _pending_interrupt(self, config: dict):
+        """Return the interrupt payload if the thread is paused at one, else None.
+
+        A paused graph reports the interrupted node in `snapshot.next` and carries
+        the interrupt value on that task. Reading it from state (rather than the
+        invoke() return shape) keeps this robust across langgraph versions.
+        """
+        snap = self.graph.get_state(config)
+        if not snap.next:
+            return None
+        for task in snap.tasks:
+            if task.interrupts:
+                return task.interrupts[0].value
+        return None
+
     def chat(self, message: str, session_id: str = None) -> str:
         """Send a message and get a response.
 
+        If the thread is currently paused at a clarify/confirm interrupt, this
+        message is treated as the resume answer (not a fresh turn). Otherwise it
+        starts a new turn through the router. When a turn pauses at an interrupt,
+        the returned string is the pending question; the next chat() call resumes.
+
         Args:
-            message: User's message
+            message: User's message (or the answer to a pending question)
             session_id: Optional session ID for multi-session support
 
         Returns:
-            Agent's response text
+            Agent's response text, or the pending clarify/confirm question
         """
         sid = session_id or self._session_id
         config = {"configurable": {"thread_id": sid}}
 
-        self._condense_history(config)
-
-        # Inject profile context as a SystemMessage alongside the new message.
-        # The checkpointer, not a Python dict, is now the source of truth for
-        # conversation history — we only ever pass the newest message(s) in.
-        context = self._profile_mgr.get_context_string(self.user_id)
-        prefix = [SystemMessage(content=context)] if context else []
-
         try:
-            result = self.agent.invoke(
-                {
-                    "messages": prefix + [HumanMessage(content=message)],
-                    "user_id": self.user_id,
-                    "known_skills": self._profile.get("known_skills", []),
-                    "goals": self._profile.get("goals", ""),
-                    "hours_per_week": self._profile.get("hours_per_week", 10.0) or 10.0,
-                },
-                config=config,
-            )
+            if self._pending_interrupt(config) is not None:
+                # Thread is paused — resume the interrupted node with this answer.
+                result = self.graph.invoke(Command(resume=message), config=config)
+            else:
+                self._condense_history(config)
+                # Inject profile context as a SystemMessage alongside the new message.
+                # The checkpointer, not a Python dict, is the source of truth for
+                # history — we only ever pass the newest message(s) in.
+                context = self._profile_mgr.get_context_string(self.user_id)
+                prefix = [SystemMessage(content=context)] if context else []
+                result = self.graph.invoke(
+                    {
+                        "messages": prefix + [HumanMessage(content=message)],
+                        "user_id": self.user_id,
+                        "known_skills": self._profile.get("known_skills", []),
+                        "goals": self._profile.get("goals", ""),
+                        "hours_per_week": self._profile.get("hours_per_week", 10.0) or 10.0,
+                    },
+                    config=config,
+                )
 
-            # Extract the final AI response
-            output_messages = result.get("messages", [])
-            response_text = ""
-            for msg in reversed(output_messages):
+            # Did this run pause at an interrupt? Surface the question as the reply.
+            pending = self._pending_interrupt(config)
+            if pending is not None:
+                return pending.get("question", "Could you clarify that?")
+
+            # Otherwise return the final AI response.
+            for msg in reversed(result.get("messages", [])):
                 if isinstance(msg, AIMessage) and msg.content:
-                    response_text = msg.content
-                    break
-
-            if not response_text:
-                response_text = "I'm not sure how to respond to that."
-
-            return response_text
+                    return msg.content
+            return "I'm not sure how to respond to that."
 
         except Exception as e:
             return f"I encountered an error: {str(e)}\nPlease try rephrasing your question."
@@ -213,7 +399,7 @@ class CourseAdvisorAgent:
         """Get conversation history for a session from the checkpointer."""
         sid = session_id or self._session_id
         config = {"configurable": {"thread_id": sid}}
-        state = self.agent.get_state(config)
+        state = self.graph.get_state(config)
         if not state.values:
             return []
         return state.values.get("messages", [])

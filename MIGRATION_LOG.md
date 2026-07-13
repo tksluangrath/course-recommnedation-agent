@@ -55,7 +55,7 @@ read `state["hours_per_week"]` — scoped to that single invocation, not a share
 | 1 — Dependency fix | done | orchestrator, no subagent |
 | 2 — Kill global profile hack | done | see Phase 2 section below |
 | 3 — Persistence via checkpointer | done | see Phase 3 section below |
-| 4 — Explicit control flow | not started | |
+| 4 — Explicit control flow | done | see Phase 4 section below |
 | 5 — Streaming | not started | |
 | 6 — Long-term memory store | not started (optional, needs sign-off) | |
 
@@ -160,3 +160,63 @@ Deviation from brief: none. One note: the profile-context `SystemMessage` is re-
 mid-conversation profile edits (`/skills`, `/goal`, `/hours`) are reflected without extra
 bookkeeping; `_condense_history()`'s token budget absorbs the resulting repeated system messages
 along with the rest of the old history, so this doesn't grow unbounded.
+
+## Phase 4 — Explicit control flow (StateGraph rebuild)
+
+Change: `src/agents/course_advisor.py` (replaced `create_agent` with a compiled `StateGraph`),
+`src/agents/state.py` (added router scratch fields).
+
+Graph shape:
+```
+START -> router
+router -(state["route"])-> clarify | confirm | agent
+clarify -> agent      (after interrupt() resumes with the answer, appended as a HumanMessage)
+confirm -> END        (mutation applied or declined)
+agent   -(tool_calls?)-> tools | END
+tools   -> agent      (normal tool-calling loop)
+```
+- `router`: one `llm.with_structured_output(RouterIntent)` call classifying the turn into
+  `search`/`skill_gap`/`learning_path` (all → `route="agent"`, still handled by the existing
+  9-tool tool-calling loop — the router does not hand-route individual tools),
+  `needs_clarification` (→ `route="clarify"`), or `profile_mutation` (→ `route="confirm"`).
+  Falls back to `route="agent"` on any router failure so a bad classification never breaks a turn.
+- `clarify`: calls `interrupt({"type": "clarify", "question": ...})`, genuinely suspending the
+  graph; the next `chat()` call resumes it with the user's answer.
+- `confirm`: triggered before overwriting an already-non-empty `goals` or `known_skills` value;
+  calls `interrupt({"type": "confirm", ...})` and only applies the mutation on a yes/y resume.
+- `chat()`'s resume bridge: `_pending_interrupt(config)` reads `graph.get_state(config).next` +
+  `task.interrupts[0].value`; if paused, the incoming message is fed via
+  `graph.invoke(Command(resume=message), config)` instead of starting a fresh turn.
+- Public API (`chat`, `get_history`, `reset`, `get_profile`, `update_profile`, `add_skills`,
+  `display_profile`) unchanged in signature; `chat_cli.py`/`streamlit_app.py` need no changes for
+  this phase.
+
+Exit criteria: independent verification subagent reports 4/4 pass with evidence.
+
+Result: PASS (4/4), both by the independent verification subagent and by the orchestrator's own
+separate stub-LLM trace (`graph.get_state(config).next` shown non-empty at `('clarify',)` /
+`('confirm',)` while paused, empty after resume; a `no` answer on confirm was shown to actually
+block the write, a `yes` was shown to actually apply it).
+1. Grep for `set_active_profile`/`_active_profile`/`self._histories` → zero hits.
+2. `course_advisor.py`/`state.py` compile; module imports and constructs a `CompiledStateGraph`
+   with a stubbed LLM; all 7 public method signatures unchanged.
+3. Real interrupt trace: `.next` non-empty at both `clarify` and `confirm` pauses, empty after
+   each resume; decline path leaves the profile field unchanged, accept path applies it.
+4. `src/recommender/*.py` shows no diff; the pre-existing diffs on `docker-compose.yml`,
+   `docker-entrypoint.sh`, `src/utils/database.py` are self-consistent with unrelated infra work
+   (healthcheck/volume/env changes, WAL mode) — nothing graph/agent-related was added to them.
+
+Known gap (flagged, not silently skipped): the confirm interrupt only covers the **conversational**
+path (natural-language "set my goal to X" routed through `router → confirm`). `chat_cli.py`'s
+`/goal`/`/skills` command handlers and `streamlit_app.py`'s sidebar "Save Goal"/"Save Skills"
+buttons still call `update_profile()`/`add_skills()` directly with no confirmation gate. Closing
+this means routing those direct-command paths through the graph too, which overlaps with Phase 5's
+UI-integration work (a mid-command yes/no prompt doesn't fit `chat()`'s current blocking
+string-return contract without the streaming rework Phase 5 owns) — carried forward as a Phase 5
+consideration, not solved here.
+
+Deviation from brief: the implementation subagent found the rebuild already present, uncommitted,
+in the working tree (from an earlier dispatch of this same phase that was interrupted mid-run
+before its file writes were reverted) and verified it in place rather than re-authoring working,
+already-correct code. The orchestrator independently re-verified the interrupt/resume behavior
+from scratch (see Result above) rather than accepting either subagent's report at face value.

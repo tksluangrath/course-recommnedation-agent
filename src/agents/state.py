@@ -32,3 +32,11 @@ class CourseAdvisorState(AgentState):
     known_skills: list[str]
     goals: str
     hours_per_week: float
+
+    # Phase 4 routing scratch fields, written by the router node and read by the
+    # graph's conditional edges / clarify+confirm nodes. Plain overwrite semantics
+    # (no reducer): each turn's router run replaces them. Tools never read these.
+    route: str
+    clarify_question: str
+    mutation_field: str   # "goals" | "skills" | ""
+    mutation_value: str
