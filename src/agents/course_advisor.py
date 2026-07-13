@@ -389,6 +389,68 @@ class CourseAdvisorAgent:
         except Exception as e:
             return f"I encountered an error: {str(e)}\nPlease try rephrasing your question."
 
+    def stream_chat(self, message: str, session_id: str = None):
+        """Stream a response token-by-token instead of blocking for the full reply.
+
+        Same resume/interrupt semantics as chat(): if the thread is paused at a
+        clarify/confirm interrupt, `message` is treated as the resume answer.
+        Yields plain string chunks — either LLM tokens from the "agent" node as
+        they're generated, or (for an interrupt pause, or a confirm/clarify node
+        that built its reply directly without an LLM call) the whole reply as a
+        single chunk. Callers don't need to special-case interrupts: just print
+        every yielded chunk as it arrives.
+
+        Args:
+            message: User's message (or the answer to a pending question)
+            session_id: Optional session ID for multi-session support
+
+        Yields:
+            str: response chunks, in order, forming the full reply when joined
+        """
+        sid = session_id or self._session_id
+        config = {"configurable": {"thread_id": sid}}
+
+        try:
+            if self._pending_interrupt(config) is not None:
+                stream_input = Command(resume=message)
+            else:
+                self._condense_history(config)
+                context = self._profile_mgr.get_context_string(self.user_id)
+                prefix = [SystemMessage(content=context)] if context else []
+                stream_input = {
+                    "messages": prefix + [HumanMessage(content=message)],
+                    "user_id": self.user_id,
+                    "known_skills": self._profile.get("known_skills", []),
+                    "goals": self._profile.get("goals", ""),
+                    "hours_per_week": self._profile.get("hours_per_week", 10.0) or 10.0,
+                }
+
+            streamed_any = False
+            for chunk, metadata in self.graph.stream(
+                stream_input, config=config, stream_mode="messages"
+            ):
+                if metadata.get("langgraph_node") == "agent" and getattr(chunk, "content", None):
+                    streamed_any = True
+                    yield chunk.content
+
+            # Paused at a clarify/confirm interrupt: surface the question as one chunk.
+            pending = self._pending_interrupt(config)
+            if pending is not None:
+                yield pending.get("question", "Could you clarify that?")
+                return
+
+            # confirm_node builds its AIMessage directly (no LLM call), so nothing
+            # streamed above — fall back to the final state's last AIMessage.
+            if not streamed_any:
+                for msg in reversed(self.graph.get_state(config).values.get("messages", [])):
+                    if isinstance(msg, AIMessage) and msg.content:
+                        yield msg.content
+                        return
+                yield "I'm not sure how to respond to that."
+
+        except Exception as e:
+            yield f"I encountered an error: {str(e)}\nPlease try rephrasing your question."
+
     def reset(self, session_id: str = None):
         """Clear conversation history by deleting the checkpointed thread."""
         sid = session_id or self._session_id

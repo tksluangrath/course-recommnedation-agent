@@ -179,10 +179,12 @@ def main():
             _handle_command(user_input, agent)
             continue
 
-        # Get response from agent
+        # Get streamed response from agent
         print()
-        response = agent.chat(user_input)
-        print(f"\nAdvisor: {response}\n")
+        print("Advisor: ", end="", flush=True)
+        for chunk in agent.stream_chat(user_input):
+            print(chunk, end="", flush=True)
+        print("\n")
 
 
 if __name__ == "__main__":

@@ -964,7 +964,7 @@ def _render_message_history() -> None:
 def _process_pending_message(agent: CourseAdvisorAgent) -> None:
     """
     If the last message is from the user and has no agent reply yet,
-    call the agent and append the assistant response.
+    stream the agent's response live in a chat bubble, then append it.
 
     Calls st.rerun() after appending — safe because on re-entry the last
     message is now 'assistant' role so this function exits immediately.
@@ -975,11 +975,12 @@ def _process_pending_message(agent: CourseAdvisorAgent) -> None:
 
     user_content = msgs[-1]["content"]
 
-    with st.spinner("Thinking..."):
+    with st.chat_message("assistant"):
         try:
-            response = agent.chat(user_content)
+            response = st.write_stream(agent.stream_chat(user_content))
         except Exception as e:
             response = f"Sorry, something went wrong: {e}"
+            st.markdown(response)
 
     chart_data = _extract_chart_data(response)
     msgs.append({

@@ -56,7 +56,7 @@ read `state["hours_per_week"]` — scoped to that single invocation, not a share
 | 2 — Kill global profile hack | done | see Phase 2 section below |
 | 3 — Persistence via checkpointer | done | see Phase 3 section below |
 | 4 — Explicit control flow | done | see Phase 4 section below |
-| 5 — Streaming | not started | |
+| 5 — Streaming | done | see Phase 5 section below |
 | 6 — Long-term memory store | not started (optional, needs sign-off) | |
 
 ## Phase 1 — Dependency fix
@@ -220,3 +220,56 @@ in the working tree (from an earlier dispatch of this same phase that was interr
 before its file writes were reverted) and verified it in place rather than re-authoring working,
 already-correct code. The orchestrator independently re-verified the interrupt/resume behavior
 from scratch (see Result above) rather than accepting either subagent's report at face value.
+
+## Phase 5 — Streaming
+
+Change: `src/agents/course_advisor.py` (new `stream_chat()` method), `src/agents/chat_cli.py`
+(chat loop prints chunks as they arrive), `app/streamlit_app.py` (`_process_pending_message` uses
+`st.chat_message("assistant")` + `st.write_stream(...)`).
+
+Dispatched as two parallel subagents (Subagent A: `chat_cli.py`, Subagent B: `streamlit_app.py`),
+both briefed to converge on the same `stream_chat()` signature so neither invented a diverging
+interface. `stream_chat(self, message: str, session_id: str = None)` is a generator yielding plain
+string chunks:
+- Normal turn: incremental LLM token deltas from the `agent` node, via
+  `self.graph.stream(stream_input, config=config, stream_mode="messages")`, filtered to
+  `metadata["langgraph_node"] == "agent"`.
+- Same resume/interrupt semantics as `chat()`: if the thread is paused, `message` is fed as
+  `Command(resume=message)` instead of a fresh turn.
+- Interrupt pause: the whole pending question is yielded as one chunk (not token-by-token, since
+  it isn't LLM output).
+- `confirm` node's replies (built directly, no LLM call): falls back to yielding the final
+  checkpointed state's last `AIMessage.content` as one chunk, since nothing streamed from the
+  `agent` node in that case.
+
+`chat()` (blocking) is left in place, still used by `course_advisor.py`'s own `__main__` demo
+block — not dead code, not removed.
+
+Both subagents edited `course_advisor.py` at roughly the same time (parallel dispatch on a shared
+file, expected per the brief's "same excerpt" coordination note); this produced one duplicate
+`stream_chat()` definition, caught and resolved by Subagent B deleting its copy after confirming
+both implementations were functionally identical.
+
+Exit criteria: both entry points stream tokens; no blocking `.invoke()`/`.chat()` left on the hot
+path for a normal turn.
+
+Result: PASS.
+- `grep -rn "\.chat(" --include="*.py" .` → only one remaining hit,
+  `src/agents/course_advisor.py`'s own `__main__` demo block — not on either UI's hot path.
+- `python3 -m py_compile src/agents/course_advisor.py src/agents/chat_cli.py app/streamlit_app.py`
+  → clean.
+- Orchestrator's own stub-LLM trace (`_stream` yielding 6 separate `AIMessageChunk`s) confirmed
+  `stream_chat()` yields 6 separate chunks (`['Sure', ', ', 'here ', 'are ', 'some ', 'courses!']`),
+  not one blob — genuine incremental streaming through the graph, not simulated.
+- Subagent A separately confirmed the same with a 5-chunk stub; Subagent B confirmed a plain-Python
+  join simulation of `st.write_stream`'s behavior (join generator output, use the joined string for
+  `_extract_chart_data`/history-append) for both a multi-chunk normal turn and a single-chunk
+  interrupt pause.
+
+Housekeeping note: one of the subagents' smoke tests ran against the real `data/courses.db`
+(instead of a temp `DB_PATH`), writing a stray `__test_stream_user__` profile row and 4 checkpoint
+rows. Found and removed by the orchestrator before this commit; `alice`'s and `terrance`'s real
+profile rows were confirmed untouched. `data/courses.db-shm`/`-wal` were also cleared.
+
+Deviation from brief: none beyond the duplicate-method collision described above, which was
+self-resolved by the subagents without orchestrator intervention.
