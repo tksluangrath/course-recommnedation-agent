@@ -10,7 +10,8 @@ import sys
 from pathlib import Path
 from typing import Annotated, Optional
 from langchain_core.tools import tool
-from langgraph.prebuilt import InjectedState
+from langgraph.prebuilt import InjectedState, InjectedStore
+from langgraph.store.base import BaseStore
 
 # Add parent paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
@@ -59,6 +60,43 @@ def _get_path_graph():
     return _path_graph
 
 
+# Long-term memory: sub-namespace under (user_id, ...) where a user's previously
+# recommended course names are persisted across conversation threads via the graph's Store.
+RECOMMENDED_NS = "recommended_courses"
+
+
+def remember_courses(store, state, names):
+    """Persist recommended course names to the user's long-term Store namespace.
+
+    Shared write path for every recommending tool (so the logic lives in one
+    place, not copy-pasted 5x). No-ops safely if the store/user_id/names are
+    missing. Keyed by course name, so re-recommending the same course just
+    overwrites (natural dedup).
+    """
+    user_id = (state or {}).get("user_id", "") if state else ""
+    if store is None or not user_id or not names:
+        return
+    ns = (user_id, RECOMMENDED_NS)
+    for name in names:
+        if name:
+            store.put(ns, str(name), {"name": name})
+
+
+def recalled_courses(store, user_id, limit=30):
+    """Return course names previously recommended to this user, newest-ish first."""
+    if store is None or not user_id:
+        return []
+    items = store.search((user_id, RECOMMENDED_NS), limit=limit)
+    return [it.value.get("name", it.key) for it in items]
+
+
+def _names_from_df(df, max_courses=5):
+    """Pull up to max_courses course names from a results DataFrame."""
+    if df is None or getattr(df, "empty", True) or "course_name" not in df.columns:
+        return []
+    return [n for n in df["course_name"].head(max_courses).tolist() if n]
+
+
 def _format_courses(df, max_courses=5):
     """Format a DataFrame of courses into readable text."""
     if df is None or df.empty:
@@ -97,7 +135,11 @@ def _format_courses(df, max_courses=5):
 
 
 @tool
-def search_courses(query: str) -> str:
+def search_courses(
+    query: str,
+    state: Annotated[CourseAdvisorState, InjectedState] = None,
+    store: Annotated[BaseStore, InjectedStore] = None,
+) -> str:
     """Search for courses using a natural language query. Use this when the user asks
     to find courses on a topic, or wants recommendations based on their interests.
 
@@ -106,6 +148,7 @@ def search_courses(query: str) -> str:
     """
     rec = _get_hybrid_rec()
     results = rec.recommend(query, n=5)
+    remember_courses(store, state, _names_from_df(results))
     return _format_courses(results)
 
 
@@ -123,7 +166,11 @@ def find_similar_courses(course_name: str) -> str:
 
 
 @tool
-def recommend_by_skills(skills: str) -> str:
+def recommend_by_skills(
+    skills: str,
+    state: Annotated[CourseAdvisorState, InjectedState] = None,
+    store: Annotated[BaseStore, InjectedStore] = None,
+) -> str:
     """Recommend courses based on specific skills the user wants to learn.
     Use this when the user lists skills they want to acquire.
 
@@ -140,6 +187,7 @@ def recommend_by_skills(skills: str) -> str:
     if results.empty:
         return f"No courses found for skills: {', '.join(skill_list)}"
 
+    remember_courses(store, state, _names_from_df(results))
     lines = []
     for i, (_, row) in enumerate(results.head(5).iterrows(), 1):
         matched = row.get('matched_skills', [])
@@ -163,6 +211,7 @@ def create_learning_path(
     goal: str,
     current_skills: str = "",
     state: Annotated[CourseAdvisorState, InjectedState] = None,
+    store: Annotated[BaseStore, InjectedStore] = None,
 ) -> str:
     """Create a structured learning path from beginner to advanced for a goal.
     Use this when the user wants a step-by-step learning plan.
@@ -187,6 +236,11 @@ def create_learning_path(
 
     rec = _get_hybrid_rec()
     path = rec.recommend_learning_path(goal, current_skills=skills, n_per_level=3)
+
+    path_names = []
+    for _level in ['Beginner', 'Intermediate', 'Advanced']:
+        path_names += _names_from_df(path.get(_level), max_courses=3)
+    remember_courses(store, state, path_names)
 
     lines = [f"Learning Path: {goal}\n"]
     for level in ['Beginner', 'Intermediate', 'Advanced']:
@@ -226,7 +280,12 @@ def create_learning_path(
 
 
 @tool
-def analyze_skill_gap(goal_skills: str, current_skills: str) -> str:
+def analyze_skill_gap(
+    goal_skills: str,
+    current_skills: str,
+    state: Annotated[CourseAdvisorState, InjectedState] = None,
+    store: Annotated[BaseStore, InjectedStore] = None,
+) -> str:
     """Analyze the gap between a user's current skills and their goal skills.
     Use this when the user wants to know what they need to learn to reach a goal.
 
@@ -264,6 +323,7 @@ def analyze_skill_gap(goal_skills: str, current_skills: str) -> str:
 
     recs = gap.get('recommended_courses')
     if recs is not None and not recs.empty:
+        remember_courses(store, state, _names_from_df(recs))
         lines.append(f"\nRecommended courses to fill the gap:")
         lines.append(_format_courses(recs, max_courses=5))
 
@@ -333,6 +393,7 @@ def get_popular_skills(category: str = "") -> str:
 def estimate_learning_timeline(
     goal_and_hours: str,
     state: Annotated[CourseAdvisorState, InjectedState] = None,
+    store: Annotated[BaseStore, InjectedStore] = None,
 ) -> str:
     """Estimate how long a learning path will take given available study hours.
     Use this when the user asks how long it will take to learn something, or when
@@ -361,6 +422,12 @@ def estimate_learning_timeline(
 
     if timeline['total_hours'] == 0:
         return f"No courses found for '{goal}'. Try a different search term."
+
+    remember_courses(
+        store,
+        state,
+        [c for s in timeline.get('schedule', []) for c in s.get('courses', [])],
+    )
 
     lines = [
         f"Timeline Estimate: {goal}",

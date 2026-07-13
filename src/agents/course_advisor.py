@@ -13,6 +13,7 @@ from typing import List, Literal
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, RemoveMessage, trim_messages
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.store.sqlite import SqliteStore
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langgraph.types import interrupt, Command
@@ -23,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
 
 from llm_config import LLMConfig
-from recommender_tools import get_all_tools
+from recommender_tools import get_all_tools, recalled_courses
 from database import ProfileManager
 from state import CourseAdvisorState
 
@@ -133,6 +134,16 @@ class CourseAdvisorAgent:
         conn = sqlite3.connect(db_path, check_same_thread=False)
         self._checkpointer = SqliteSaver(conn)
 
+        # Long-term memory Store (distinct from the per-thread checkpointer):
+        # persists facts keyed purely by user_id — e.g. which courses we've already
+        # recommended — so they survive across conversation threads/sessions. Its
+        # own connection to the same SQLite file, mirroring the checkpointer setup.
+        # isolation_level=None (autocommit) is required: SqliteStore issues its own
+        # explicit BEGIN, which errors under sqlite3's default implicit-transaction mode.
+        store_conn = sqlite3.connect(db_path, check_same_thread=False, isolation_level=None)
+        self._store = SqliteStore(store_conn)
+        self._store.setup()
+
         self.graph = self._build_graph()
         self._session_id = self.user_id
 
@@ -183,7 +194,7 @@ class CourseAdvisorAgent:
         )
         g.add_edge("tools", "agent")
 
-        return g.compile(checkpointer=self._checkpointer)
+        return g.compile(checkpointer=self._checkpointer, store=self._store)
 
     @staticmethod
     def _last_human(messages) -> str:
@@ -271,8 +282,22 @@ class CourseAdvisorAgent:
         return {"messages": [AIMessage(content=f"Done — your skills are now: {', '.join(updated)}.")]}
 
     def _agent_node(self, state: CourseAdvisorState) -> dict:
-        """Normal tool-calling LLM step. Loops with the ToolNode until no tool calls remain."""
-        messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(state["messages"])
+        """Normal tool-calling LLM step. Loops with the ToolNode until no tool calls remain.
+
+        Surfaces the user's previously recommended courses (from the long-term
+        Store, keyed by user_id across all threads) as a system-prompt note so the
+        LLM can avoid repeating them verbatim. This is a nudge, not a hard filter —
+        legitimate re-asks ("tell me about that Python course again") still work.
+        """
+        system = SYSTEM_PROMPT
+        recalled = recalled_courses(self._store, state.get("user_id", ""))
+        if recalled:
+            system += (
+                "\n\nAlready recommended to this user in the past (prefer to avoid "
+                "repeating these verbatim unless they explicitly ask about one again; "
+                "favor fresh options where suitable): " + ", ".join(recalled)
+            )
+        messages = [SystemMessage(content=system)] + list(state["messages"])
         response = self._llm_with_tools.invoke(messages)
         return {"messages": [response]}
 
