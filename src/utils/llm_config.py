@@ -1,7 +1,7 @@
 """
-LLM configuration — supports Ollama (local) and Claude (API).
+LLM configuration — supports Ollama (local), Claude (API), and Gemini (API).
 
-Set LLM_PROVIDER=ollama or LLM_PROVIDER=claude in your .env file.
+Set LLM_PROVIDER=ollama, LLM_PROVIDER=claude, or LLM_PROVIDER=gemini in your .env file.
 """
 
 import os
@@ -21,16 +21,33 @@ class LLMConfig:
     CLAUDE_MODEL   = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
     CLAUDE_TEMP    = float(os.getenv("CLAUDE_TEMPERATURE", "0.7"))
     CLAUDE_TOKENS  = int(os.getenv("CLAUDE_MAX_TOKENS", "4096"))
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+    GEMINI_TEMP    = float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
 
     @staticmethod
     def get_chat_llm(provider: str = None, temperature: float = None):
         """Return a ChatModel instance for tool-calling agents.
 
         Args:
-            provider: "ollama" or "claude" (defaults to LLM_PROVIDER env var)
+            provider: "ollama", "claude", or "gemini" (defaults to LLM_PROVIDER env var)
             temperature: Sampling temperature (defaults to env var value)
         """
         provider = (provider or LLMConfig.LLM_PROVIDER).lower()
+
+        if provider == "gemini":
+            if not LLMConfig.GEMINI_API_KEY:
+                raise ValueError(
+                    "GEMINI_API_KEY not set. Add it to your .env file:\n"
+                    "  GEMINI_API_KEY=your_key_here\n"
+                    "Get one at https://aistudio.google.com/apikey"
+                )
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            return ChatGoogleGenerativeAI(
+                model=LLMConfig.GEMINI_MODEL,
+                google_api_key=LLMConfig.GEMINI_API_KEY,
+                temperature=temperature or LLMConfig.GEMINI_TEMP,
+            )
 
         if provider == "claude":
             if not LLMConfig.CLAUDE_API_KEY:
@@ -62,4 +79,4 @@ class LLMConfig:
                     f"  ollama pull {LLMConfig.OLLAMA_MODEL}"
                 ) from e
 
-        raise ValueError(f"Unknown provider '{provider}'. Use 'ollama' or 'claude'.")
+        raise ValueError(f"Unknown provider '{provider}'. Use 'ollama', 'claude', or 'gemini'.")

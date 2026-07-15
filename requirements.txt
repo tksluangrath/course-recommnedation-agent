@@ -12,6 +12,7 @@ langgraph-checkpoint-sqlite
 # LLM Providers
 langchain-anthropic>=0.1.1  # For Claude AI
 langchain-ollama>=0.1.0     # For Ollama ChatModel
+langchain-google-genai>=2.0.0  # For Gemini
 anthropic>=0.18.1           # Anthropic SDK
 
 # LLM & Embeddings

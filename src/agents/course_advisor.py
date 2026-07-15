@@ -106,7 +106,7 @@ class CourseAdvisorAgent:
 
         Args:
             user_id: Username for profile persistence (defaults to "default")
-            provider: LLM provider ("ollama" or "claude")
+            provider: LLM provider ("ollama", "claude", or "gemini")
             temperature: LLM temperature
         """
         print("Initializing Course Advisor Agent...")

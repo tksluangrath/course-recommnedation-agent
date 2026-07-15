@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from sqlalchemy import (
     create_engine,
+    event,
     Column,
     Integer,
     String,
@@ -132,19 +133,30 @@ class UserInteraction(Base):
 class DatabaseManager:
     """Manages database connections and operations."""
 
-    def __init__(self, db_path: str = "data/courses.db"):
+    def __init__(self, db_path: str = None):
         """Initialize database manager.
 
         Args:
             db_path: Path to SQLite database file
         """
-        self.db_path = db_path
+        self.db_path = db_path or os.environ.get("DB_PATH", "data/courses.db")
 
         # Ensure data directory exists
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
         # Create engine and session
-        self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
+        self.engine = create_engine(
+            f'sqlite:///{self.db_path}',
+            echo=False,
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
+
+        @event.listens_for(self.engine, "connect")
+        def set_wal_mode(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.close()
+
         self.Session = sessionmaker(bind=self.engine)
 
         # Create tables if they don't exist

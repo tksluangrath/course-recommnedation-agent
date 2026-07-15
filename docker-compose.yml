@@ -6,10 +6,11 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/version"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/11434' 2>/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
   app:
     build: .
@@ -19,11 +20,14 @@ services:
       ollama:
         condition: service_healthy
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data:ro
+      - db_data:/app/db
       - ./.env:/app/.env:ro
     environment:
       - OLLAMA_HOST=http://ollama:11434
+      - DB_PATH=/app/db/courses.db
     restart: unless-stopped
 
 volumes:
   ollama_data:
+  db_data:
